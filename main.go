@@ -5,6 +5,8 @@ import (
 	//"io"
 	"log"
 	"os"
+	//"path"
+	"path/filepath"
 )
 
 const (
@@ -19,18 +21,44 @@ const (
 )
 
 func main() {
-	// fmt.Println(i2)
-	var homePath string
-	homePath, dirErr := os.UserHomeDir()
-	if dirErr == nil {
-		fmt.Println(homePath)
-		var myText string = "Домашняя папка: \n" + homePath
-		err := os.WriteFile("hello.txt", []byte(myText), 0666)
-		if err != nil {
-			log.Fatal(err)
-		}
-		if err == nil {
-			fmt.Println("Успешно!")
-		}
+	// myString := outputToOneString(getOutput())
+	check(os.WriteFile("output.txt", []byte(outputToOneString(getOutput())), 0666))
+	fmt.Println("Успешно!")
+}
+
+func outputToOneString(strings []string) string {
+	myString := ""
+	myOutput := strings
+	for i := 0; i < len(myOutput); i++ {
+		myString += myOutput[i] + "\n"
+	}
+	return myString
+}
+
+func getOutput() []string {
+	absoluteFilepathToTheExecutable, err := filepath.Abs(os.Args[0])
+	check(err)
+	return getDirAndFiles(absoluteFilepathToTheExecutable)
+
+}
+
+func getDirAndFiles(s string) []string {
+	myFile, err1 := os.Open(s)
+	check(err1)
+
+	myFilePath := filepath.Dir(myFile.Name())
+	myFile, err1 = os.Open(myFilePath)
+	check(err1)
+
+	myList, err1 := myFile.Readdirnames(-1)
+	check(err1)
+
+	return append([]string{myFilePath}, myList...)
+}
+
+func check(e error) {
+	if e != nil {
+		log.Fatal(e)
+		panic(e)
 	}
 }
