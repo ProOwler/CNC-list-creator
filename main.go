@@ -2,10 +2,8 @@ package main
 
 import (
 	"fmt"
-	//"io"
 	"log"
 	"os"
-	//"path"
 	"path/filepath"
 )
 
@@ -22,7 +20,10 @@ const (
 
 func main() {
 	// myString := outputToOneString(getOutput())
-	check(os.WriteFile("output.txt", []byte(outputToOneString(getOutput())), 0666))
+	// nameForListOfFiles := "list.xml"
+	nameForListOfFiles := "output.txt"
+
+	check(os.WriteFile(nameForListOfFiles, []byte(outputToOneString(getOutput())), 0666))
 	fmt.Println("Успешно!")
 }
 
@@ -36,24 +37,38 @@ func outputToOneString(strings []string) string {
 }
 
 func getOutput() []string {
-	absoluteFilepathToTheExecutable, err := filepath.Abs(os.Args[0])
+	absoluteFilepath, err := filepath.Abs(getAbsoluteFilepathFromStartupArgs())
 	check(err)
-	return getDirAndFiles(absoluteFilepathToTheExecutable)
-
+	return getListOfDirAndFiles(absoluteFilepath)
 }
 
-func getDirAndFiles(s string) []string {
-	myFile, err1 := os.Open(s)
+func getListOfDirAndFiles(givenFilename string) []string {
+	myFileInfo, err1 := os.Stat(givenFilename)
 	check(err1)
 
-	myFilePath := filepath.Dir(myFile.Name())
-	myFile, err1 = os.Open(myFilePath)
+	mydirPath := givenFilename
+	if !myFileInfo.IsDir() {
+		mydirPath = filepath.Dir(givenFilename)
+	}
+
+	myFile, err1 := os.Open(mydirPath)
 	check(err1)
 
 	myList, err1 := myFile.Readdirnames(-1)
 	check(err1)
 
-	return append([]string{myFilePath}, myList...)
+	return myList
+}
+
+func getAbsoluteFilepathFromStartupArgs() string {
+	//return "D:\\Prowler\\projects\\CNC-list-creator\\proj\\.git\\"
+	if len(os.Args) > 1 {
+		fmt.Println("Скормлена папка: " + os.Args[1])
+		return (os.Args[1])
+	} else {
+		fmt.Println("Вызван сам по себе: " + os.Args[0])
+		return os.Args[0]
+	}
 }
 
 func check(e error) {
