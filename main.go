@@ -22,9 +22,10 @@ func main() {
 	// nameForListOfFiles := "list.xml"
 	nameForListOfFiles := "output.txt"
 
+	// чтоб компилятор не ругался на неиспользование массива
 	listOfFileFormats := []string{"xml", "XML", "mpr", "MPR"}
 	if len(listOfFileFormats) > 1 {
-	} // чтоб компилятор не ругался на неиспользование массива
+	}
 
 	check(os.WriteFile(nameForListOfFiles, []byte(getOutput()), 0666))
 	fmt.Println("Успешно!")
