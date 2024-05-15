@@ -1,24 +1,11 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"unicode"
-)
-
-const (
-	a = iota + 1
-	_
-	b
-	c
-	d = c + 2
-	t
-	i
-	i2 = iota + 2 + 0.2
 )
 
 /*
@@ -36,17 +23,20 @@ const (
 	сохранить список в файл с указанным названием
 */
 
+type myMap map[string]string
+
 func main() {
 	nameForListOfFiles := "list.xml"
 	// nameForListOfFiles := "output.txt"
 
-	listOfFileFormats := []string{"xml", "XML", "mpr", "MPR"}
+	listOfFileFormats := make(myMap)
+	listOfFileFormats["7"] = "mpr"
+	listOfFileFormats["11"] = "xml"
 
 	recursiveWalkthrough(getStartDirPath(), nameForListOfFiles, listOfFileFormats)
-
 }
 
-func recursiveWalkthrough(startPath string, outputFilename string, fileFormats []string) {
+func recursiveWalkthrough(startPath string, outputFilename string, fileFormats myMap) {
 	listOfDirContent := getListOfDirAndFiles(startPath)
 
 	var resultList []string
@@ -57,17 +47,27 @@ func recursiveWalkthrough(startPath string, outputFilename string, fileFormats [
 				outputFilename,
 				fileFormats)
 		} else {
-			if slices.Contains(fileFormats, getExtention(listOfDirContent[i])) {
+			if containsString(fileFormats, strings.ToLower(getExtention(listOfDirContent[i]))) != "" {
 				resultList = append(resultList, getAbsoluteFilepath(startPath, listOfDirContent[i]))
 			}
 		}
 	}
 
 	if len(resultList) > 0 {
-		myOutput := getOutputXML(resultList)
+		myOutput := getOutputXML(resultList, fileFormats)
 		myOutputFile := filepath.Join(startPath, outputFilename)
 		check(os.WriteFile(myOutputFile, []byte(myOutput), 0666))
 	}
+}
+
+func containsString(storage myMap, s string) string {
+	res := ""
+	for k, v := range storage {
+		if v == s {
+			return k
+		}
+	}
+	return res
 }
 
 func getExtention(name string) string {
@@ -96,18 +96,6 @@ func getMainStartupArg() string {
 		return os.Args[0]
 	}
 }
-
-/*
-func listOfStringsToOneString(stringsArg []string) string {
-		resString := ""
-
-		for i := 0; i < len(stringsArg); i++ {
-			resString += stringsArg[i] + "\n"
-		}
-		return resString
-	return strings.Join(stringsArg, "\n")
-}
-*/
 
 func getListOfDirAndFiles(givenFilename string) []string {
 	var myList []string
@@ -164,23 +152,38 @@ func countDetails(detailCode string) string {
 	return codeParts[2]
 }
 
-func getOutputXML(myList []string) string {
-	resultString := "<WorkList><Version><Major>1</Major><Minor>0</Minor></Version><FileList>"
-	+getXMLFileList(myList)
-	+"</FileList><ProcessList>"
-	+getXMLProcessList(myList)
-	+"</ProcessList></WorkList>"
+func getOutputXML(myList []string, extCodes myMap) string {
+	resultString := "<WorkList><Version><Major>1</Major><Minor>0</Minor></Version><FileList>" +
+		getXMLFileList(myList, extCodes) +
+		"</FileList><ProcessList>" +
+		getXMLProcessList(myList) +
+		"</ProcessList></WorkList>"
 
 	//	fmt.Println(resultString)
 
 	return resultString
 }
 
-func getXMLFileList(myList []string) string {
-	resString := "<Item><FileType>7</FileType><FilePath>"
-	resString += strings.Join(myList, "</FilePath></Item><Item><FileType>7</FileType><FilePath>")
-	resString += "</FilePath></Item>"
+func getXMLFileList(myPathList []string, extCodes myMap) string {
+	resString := ""
+	for _, pathEntry := range myPathList {
+		resString += "<Item><FileType>" +
+			getFiletypeCode(pathEntry, extCodes) +
+			"</FileType><FilePath>" +
+			pathEntry +
+			"</FilePath></Item>"
+	}
 	return resString
+}
+
+func getFiletypeCode(myPath string, extCodes myMap) string {
+	res := ""
+	for k, v := range extCodes {
+		if strings.ToLower(getExtention(myPath)) == v {
+			return k
+		}
+	}
+	return res
 }
 
 func getXMLProcessList(myList []string) string {
@@ -191,11 +194,11 @@ func getXMLProcessList(myList []string) string {
 		detailCode = filepath.Base(elem)
 		detailCount = countDetails(detailCode)
 		if detailCount != "" {
-			resString += "<Item><SerialNum>"
-			+detailCode[:(len(detailCode) - 4)]
-			+"</SerialNum><PlanCount>"
-			+detailCount
-			+"</PlanCount><Count>0</Count></Item>"
+			resString += "<Item><SerialNum>" +
+				detailCode[:(len(detailCode)-4)] +
+				"</SerialNum><PlanCount>" +
+				detailCount +
+				"</PlanCount><Count>0</Count></Item>"
 		}
 	}
 	return resString
