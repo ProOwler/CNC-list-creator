@@ -4,6 +4,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"unicode"
 )
@@ -36,6 +37,15 @@ func main() {
 	recursiveWalkthrough(getStartDirPath(), nameForListOfFiles, listOfFileFormats)
 }
 
+func hasStringInList(searchFor string, stringList []string) bool {
+	pos := sort.SearchStrings(stringList, searchFor)
+	if pos >= len(stringList) {
+		return false
+	}
+	res := searchFor == stringList[pos]
+	return res
+}
+
 func recursiveWalkthrough(startPath string, outputFilename string, fileFormats myMap) {
 	listOfDirContent := getListOfDirAndFiles(startPath)
 
@@ -47,20 +57,26 @@ func recursiveWalkthrough(startPath string, outputFilename string, fileFormats m
 				outputFilename,
 				fileFormats)
 		} else {
-			if containsString(fileFormats, strings.ToLower(getExtention(listOfDirContent[i]))) != "" {
+			if getStringCode(fileFormats, strings.ToLower(getExtention(listOfDirContent[i]))) != "" {
 				resultList = append(resultList, getAbsoluteFilepath(startPath, listOfDirContent[i]))
 			}
 		}
 	}
 
-	if len(resultList) > 0 {
+	if (len(resultList) > 0) && (!hasStringInList(outputFilename, listOfDirContent)) {
 		myOutput := getOutputXML(resultList, fileFormats)
-		myOutputFile := filepath.Join(startPath, outputFilename)
-		check(os.WriteFile(myOutputFile, []byte(myOutput), 0666))
+		myOutputFile, err1 := os.Create(filepath.Join(startPath, outputFilename))
+		check(err1)
+
+		_, err1 = myOutputFile.WriteString(myOutput)
+		check(err1)
+
+		check(myOutputFile.Close())
+		//fmt.Println("Добавлен файл " + outputFilename)
 	}
 }
 
-func containsString(storage myMap, s string) string {
+func getStringCode(storage myMap, s string) string {
 	res := ""
 	for k, v := range storage {
 		if v == s {
@@ -106,6 +122,8 @@ func getListOfDirAndFiles(givenFilename string) []string {
 
 		myList, err1 = myFile.Readdirnames(-1)
 		check(err1)
+
+		check(myFile.Close())
 	}
 	return myList
 }
