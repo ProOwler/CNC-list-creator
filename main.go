@@ -37,15 +37,6 @@ func main() {
 	recursiveWalkthrough(getStartDirPath(), nameForListOfFiles, listOfFileFormats)
 }
 
-func hasStringInList(searchFor string, stringList []string) bool {
-	pos := sort.SearchStrings(stringList, searchFor)
-	if pos >= len(stringList) {
-		return false
-	}
-	res := searchFor == stringList[pos]
-	return res
-}
-
 func recursiveWalkthrough(startPath string, outputFilename string, fileFormats myMap) {
 	listOfDirContent := getListOfDirAndFiles(startPath)
 
@@ -74,6 +65,15 @@ func recursiveWalkthrough(startPath string, outputFilename string, fileFormats m
 		check(myOutputFile.Close())
 		//fmt.Println("Добавлен файл " + outputFilename)
 	}
+}
+
+func hasStringInList(searchFor string, stringList []string) bool {
+	pos := sort.SearchStrings(stringList, searchFor)
+	if pos >= len(stringList) {
+		return false
+	}
+	res := searchFor == stringList[pos]
+	return res
 }
 
 func getStringCode(storage myMap, s string) string {
