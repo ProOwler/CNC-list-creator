@@ -159,15 +159,15 @@ func countDetails(detailCode string) string {
 	if len(codeParts) < 3 {
 		return ""
 	}
-	if codeParts[2] == "" {
+	if codeParts[1] == "" {
 		return ""
 	}
-	for _, elem := range codeParts[2] {
+	for _, elem := range codeParts[1] {
 		if !unicode.IsDigit(elem) {
 			return ""
 		}
 	}
-	return codeParts[2]
+	return codeParts[1]
 }
 
 func getOutputXML(myList []string, extCodes myMap) string {
