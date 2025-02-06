@@ -37,6 +37,7 @@ func main() {
 	recursiveWalkthrough(getStartDirPath(), nameForListOfFiles, listOfFileFormats)
 }
 
+// Рекурсивно обходит всё содержимое папки, которая была указана при запуске программы, создаёт файлы list.xml, если их нет
 func recursiveWalkthrough(startPath string, outputFilename string, fileFormats myMap) {
 	listOfDirContent := getListOfDirAndFiles(startPath)
 
@@ -67,7 +68,9 @@ func recursiveWalkthrough(startPath string, outputFilename string, fileFormats m
 	}
 }
 
+// Проверяет наличие строки в массиве строк
 func hasStringInList(searchFor string, stringList []string) bool {
+	sort.Strings(stringList)
 	pos := sort.SearchStrings(stringList, searchFor)
 	if pos >= len(stringList) {
 		return false
