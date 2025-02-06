@@ -6,15 +6,20 @@ import (
 
 func TestHasStringInList(t *testing.T) {
 	// Arrange - подготовка всех входных данных и ожидаемого результата
-	const requiredStr = "Go"
-	var stringList = []string{"peach", "Gopher", "apple", "Gdo", "pear", "plum"}
+	const requiredStrGO, requiredStrGDO = "Go", "Gdo"
+	var stringList = []string{"peach", "Gopher", "apple", "Gdo"}
 	//sort.Strings(stringList)
-	const want = false
+	const wantF = false
+	const wantT = true
 	// Action - вызов тестируемой функции с эталонными параметрами
-	got := hasStringInList(requiredStr, stringList)
+	gotGO := hasStringInList(requiredStrGO, stringList)
+	gotGDO := hasStringInList(requiredStrGDO, stringList)
 	// Assert - сравнение полученного значения с ожидаемым и вывод сообщения, если они не совпадают
-	if got != want {
-		t.Errorf("hasStringInList(%q, %q) = %t; \nwant %t", requiredStr, stringList, got, want)
+	if gotGO != wantF {
+		t.Errorf("hasStringInList(%q, %q); \ngot %t; \nwant %t", requiredStrGO, stringList, gotGO, wantF)
+	}
+	if gotGDO != wantT {
+		t.Errorf("hasStringInList(%q, %q); \ngot %t; \nwant %t", requiredStrGDO, stringList, gotGDO, wantT)
 	}
 }
 

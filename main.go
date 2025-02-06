@@ -64,7 +64,10 @@ func recursiveWalkthrough(startPath string, outputFilename string, fileFormats m
 		}
 	}
 
-	if (len(resultList) > 0) && (!hasStringInList(outputFilename, listOfDirContent)) {
+	// TODO: Уточнить случаи, когда НЕ НАДО формировать итоговый файл
+	mayProcessResultList := (len(resultList) > 0) && (!hasStringInList(outputFilename, listOfDirContent))
+
+	if mayProcessResultList {
 		myOutput := getOutputXML(resultList, fileFormats)
 		myOutputFile, err1 := os.Create(filepath.Join(startPath, outputFilename))
 		check(err1)
