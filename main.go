@@ -26,6 +26,15 @@ import (
 
 type myMap map[string]string
 
+// Обёртка для проверки ошибок, возвращаемых функциями
+func check(e error) {
+	if e != nil {
+		log.Fatal(e)
+		panic(e)
+	}
+}
+
+// Основная функция - запускает рекурсивный обход указанной папки и записывает результаты в файл с указанным (здесь же) названием
 func main() {
 	nameForListOfFiles := "list.xml"
 	// nameForListOfFiles := "output.txt"
@@ -79,6 +88,7 @@ func hasStringInList(searchFor string, stringList []string) bool {
 	return res
 }
 
+// Возвращает код строки, сохранённой в хранилище
 func getStringCode(storage myMap, s string) string {
 	res := ""
 	for k, v := range storage {
@@ -89,15 +99,22 @@ func getStringCode(storage myMap, s string) string {
 	return res
 }
 
+// Возвращает расширение файла
 func getExtention(name string) string {
 	result := filepath.Ext(name)
-	return result[1:]
+	if len(result) > 0 {
+		return result[1:]
+	} else {
+		return ""
+	}
 }
 
+// Возвращает путь к папке, содержимое которой нужно обработать
 func getStartDirPath() string {
 	return getDirOfArg(getMainStartupArg())
 }
 
+// Позволяет убедиться, что мы работаем с абсолютным путем к интересующему нас файлу или папке
 func getAbsoluteFilepath(parent string, s string) string {
 	if filepath.IsAbs(s) {
 		return s
@@ -106,6 +123,7 @@ func getAbsoluteFilepath(parent string, s string) string {
 	}
 }
 
+// Возвращает путь к папке, чьи внутренности будут обрабатываться
 func getMainStartupArg() string {
 	if len(os.Args) > 1 {
 		//fmt.Println("Скормлена папка: " + os.Args[1])
@@ -116,6 +134,7 @@ func getMainStartupArg() string {
 	}
 }
 
+// Возвращает список содержимого переданной папки или пустой массив
 func getListOfDirAndFiles(givenFilename string) []string {
 	var myList []string
 
@@ -131,6 +150,7 @@ func getListOfDirAndFiles(givenFilename string) []string {
 	return myList
 }
 
+// Если дан путь к папке, его и возвращает, если к файлу, то возвращает путь к папке, в которой этот файл лежит
 func getDirOfArg(givenFilename string) string {
 	if checkIsDir(givenFilename) {
 		return givenFilename
@@ -139,6 +159,7 @@ func getDirOfArg(givenFilename string) string {
 	}
 }
 
+// Проверяет, директория перед нами или нет
 func checkIsDir(givenFilename string) bool {
 	myFileInfo, err1 := os.Stat(givenFilename)
 	check(err1)
@@ -150,13 +171,7 @@ func checkIsDir(givenFilename string) bool {
 	}
 }
 
-func check(e error) {
-	if e != nil {
-		log.Fatal(e)
-		panic(e)
-	}
-}
-
+// Выделяет в строке (имя файла) подстроку (количество экземпляров детали)
 func countDetails(detailCode string) string {
 	codeParts := strings.Split(detailCode, "_")
 	if len(codeParts) < 3 {
@@ -173,6 +188,7 @@ func countDetails(detailCode string) string {
 	return codeParts[1]
 }
 
+// Формирует строку с итоговым XML
 func getOutputXML(myList []string, extCodes myMap) string {
 	resultString := "<WorkList><Version><Major>1</Major><Minor>0</Minor></Version><FileList>" +
 		getXMLFileList(myList, extCodes) +
@@ -185,6 +201,7 @@ func getOutputXML(myList []string, extCodes myMap) string {
 	return resultString
 }
 
+// Формирует часть итогового XML - список файлов
 func getXMLFileList(myPathList []string, extCodes myMap) string {
 	resString := ""
 	for _, pathEntry := range myPathList {
@@ -197,16 +214,7 @@ func getXMLFileList(myPathList []string, extCodes myMap) string {
 	return resString
 }
 
-func getFiletypeCode(myPath string, extCodes myMap) string {
-	res := ""
-	for k, v := range extCodes {
-		if strings.ToLower(getExtention(myPath)) == v {
-			return k
-		}
-	}
-	return res
-}
-
+// Формирует часть итогового XML - список деталей для обработки с количеством экземпляров
 func getXMLProcessList(myList []string) string {
 	resString := ""
 	detailCode := ""
@@ -223,4 +231,15 @@ func getXMLProcessList(myList []string) string {
 		}
 	}
 	return resString
+}
+
+// Возвращает код типа файла - если вдруг используются задания не в XML
+func getFiletypeCode(myPath string, extCodes myMap) string {
+	res := ""
+	for k, v := range extCodes {
+		if strings.ToLower(getExtention(myPath)) == v {
+			return k
+		}
+	}
+	return res
 }
