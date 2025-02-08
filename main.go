@@ -1,11 +1,15 @@
 package main
 
 import (
+	"encoding/xml"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
+	"time"
 	"unicode"
 )
 
@@ -26,16 +30,24 @@ import (
 
 type myMap map[string]string
 
-// Обёртка для проверки ошибок, возвращаемых функциями
+// Обёртки для проверки ошибок, возвращаемых функциями
 func check(e error) {
 	if e != nil {
-		log.Fatal(e)
-		panic(e)
+		log.Print(e)
+		//panic(e)
+	}
+}
+
+func checkf(e error, text string) {
+	if e != nil {
+		log.Printf(text, e)
+		//panic(e)
 	}
 }
 
 // Основная функция - запускает рекурсивный обход указанной папки и записывает результаты в файл с указанным (здесь же) названием
 func main() {
+	tThen := time.Now()
 	nameForListOfFiles := "list.xml"
 	// nameForListOfFiles := "output.txt"
 
@@ -44,6 +56,7 @@ func main() {
 	listOfFileFormats["11"] = "xml"
 
 	recursiveWalkthrough(getStartDirPath(), nameForListOfFiles, listOfFileFormats)
+	fmt.Printf("Elapsed %.6f sec", time.Since(tThen).Seconds())
 }
 
 // Рекурсивно обходит всё содержимое папки, которая была указана при запуске программы, создаёт файлы list.xml, если их нет
@@ -68,6 +81,10 @@ func recursiveWalkthrough(startPath string, outputFilename string, fileFormats m
 	mayProcessResultList := (len(resultList) > 0) && (!hasStringInList(outputFilename, listOfDirContent))
 
 	if mayProcessResultList {
+		for _, elem := range resultList {
+			updateFileWithXML(elem)
+		}
+
 		myOutput := getOutputXML(resultList, fileFormats)
 		myOutputFile, err1 := os.Create(filepath.Join(startPath, outputFilename))
 		check(err1)
@@ -245,4 +262,95 @@ func getFiletypeCode(myPath string, extCodes myMap) string {
 		}
 	}
 	return res
+}
+
+// структуры для хранения данных о детали
+type XResult struct {
+	XMLName xml.Name `xml:"Root"`
+	Project XProject `xml:"Project"`
+}
+type XProject struct {
+	Name   string  `xml:"Name,attr"`
+	Flag   string  `xml:"Flag,attr"`
+	Panels XPanels `xml:"Panels"`
+}
+type XPanels struct {
+	Panel []XPanel
+}
+type XPanel struct {
+	ID             string `xml:"ID,attr"`
+	Name           string `xml:"Name,attr"`
+	Width          string `xml:"Width,attr"`
+	Length         string `xml:"Length,attr"`
+	Material       string `xml:"Material,attr"`
+	Thickness      string `xml:"Thickness,attr"`
+	IsProduce      string `xml:"IsProduce,attr"`
+	MachiningPoint string `xml:"MachiningPoint,attr"`
+	Type           string `xml:"Type,attr"`
+	Face5ID        string `xml:"Face5ID,attr"`
+	Face6ID        string `xml:"Face6ID,attr"`
+	Grain          string `xml:"Grain,attr"`
+	Count          string `xml:"Count,attr"`
+	Machines       string `xml:",innerxml"`
+	EdgeGroup      string `xml:",innerxml"`
+}
+
+// Возвращает XML, в котором в поле Name детали записаны длина и ширина
+func getUpdatedXML(inXML string) string {
+	var root XResult
+
+	err := xml.Unmarshal([]byte(inXML), &root)
+	checkf(err, "Ошибка при разборе XML: %v")
+
+	for i := range root.Project.Panels.Panel {
+		panel := &root.Project.Panels.Panel[i]
+		width64, err := strconv.ParseFloat(panel.Width, 32)
+		check(err)
+		length64, err := strconv.ParseFloat(panel.Length, 32)
+		check(err)
+		panel.Name = fmt.Sprintf("%.3f_%.3f", float32(length64), float32(width64))
+	}
+
+	updatedXML, err := xml.MarshalIndent(root, "", "  ")
+	checkf(err, "Ошибка при сериализации XML: %v")
+
+	myHeader := `<?xml version="1.0" encoding="utf-8" ?>` + "\n"
+	return myHeader + string(updatedXML)
+}
+
+func updateFileWithXML(filePath string) {
+	if !checkIsDir(filePath) && strings.ToLower(getExtention(filePath)) == "xml" {
+		myFileBytes, err1 := os.ReadFile(filePath)
+		check(err1)
+		myFileStrings := string(myFileBytes)
+		var root XResult
+		if err := xml.Unmarshal([]byte(myFileStrings), &root); err != nil {
+			log.Printf("Ошибка при разборе XML: %v", err)
+		} else {
+			for i := range root.Project.Panels.Panel {
+				panel := &root.Project.Panels.Panel[i]
+				width64, err := strconv.ParseFloat(panel.Width, 32)
+				check(err)
+				length64, err := strconv.ParseFloat(panel.Length, 32)
+				check(err)
+				panel.Name = fmt.Sprintf("%.3f_%.3f", float32(length64), float32(width64))
+			}
+
+			updatedXML, err := xml.MarshalIndent(root, "", "  ")
+			checkf(err, "Ошибка при сериализации XML: %v")
+			myHeader := `<?xml version="1.0" encoding="utf-8" ?>` + "\n"
+			myOutputFile, err := os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE, 0755)
+			if err == nil {
+				resXML := myHeader + string(updatedXML)
+				unwantedSymbolsCount := len(myFileStrings) - len(resXML)
+				if unwantedSymbolsCount > 0 {
+					resXML += strings.Repeat(" ", unwantedSymbolsCount)
+				}
+				_, err1 = myOutputFile.WriteString(resXML)
+				check(err1)
+			}
+			check(myOutputFile.Close())
+		}
+
+	}
 }
