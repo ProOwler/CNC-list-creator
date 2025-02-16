@@ -308,7 +308,7 @@ func getUpdatedXML(inXML string) string {
 		check(err)
 		length64, err := strconv.ParseFloat(panel.Length, 32)
 		check(err)
-		panel.Name = fmt.Sprintf("%.3f_%.3f", float32(length64), float32(width64))
+		panel.Name = fmt.Sprintf("%.1f_%.1f", float32(length64), float32(width64))
 	}
 
 	updatedXML, err := xml.MarshalIndent(root, "", "  ")
@@ -333,7 +333,7 @@ func updateFileWithXML(filePath string) {
 				check(err)
 				length64, err := strconv.ParseFloat(panel.Length, 32)
 				check(err)
-				panel.Name = fmt.Sprintf("%.3f_%.3f", float32(length64), float32(width64))
+				panel.Name = fmt.Sprintf("%.1f_%.1f", float32(length64), float32(width64))
 			}
 
 			updatedXML, err := xml.MarshalIndent(root, "", "  ")
