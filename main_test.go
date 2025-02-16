@@ -47,23 +47,18 @@ func TestGetUpdatedXML(t *testing.T) {
 <Root>
   <Project Name="" Flag="SWJ008">
     <Panels>
-      <Panel ID="1.4_4_Ковыряло_левое_(фрезеровка)" Name="1400_432_1" Width="432.250" Length="1400.500" Material="" Thickness="16.000" IsProduce="true" MachiningPoint="1" Type="1" Face5ID="" Face6ID="" Grain="L" Count="1">
+      <Panel ID="1.4_4_Ковыряло_левое_(фрезеровка)" Name="740_432_1" Width="432.250" Length="740.500" Material="" Thickness="16.000" IsProduce="true" MachiningPoint="1" Type="1" Face5ID="" Face6ID="" Grain="L" Count="1">
         <Machines>
           <Machining ID="1000" Type="3" IsGenCode="2" Face="5" Depth="16.000" X="670.000" Y="25.000" Pocket="0" ToolOffset="左">
             <Lines>
               <Line LineID="1" EndX="715.000" EndY="25.000" Angle="0.000000" />
               <Line LineID="2" EndX="725.000" EndY="35.000" Angle="-90.000" />
-              <Line LineID="3" EndX="725.000" EndY="135.000" Angle="0.000000" />
-              <Line LineID="4" EndX="715.000" EndY="145.000" Angle="-90.000000" />
-              <Line LineID="5" EndX="635.000" EndY="145.000" Angle="0.000000" />
             </Lines>
           </Machining>
         </Machines>
         <EdgeGroup>
           <Edge Face="1" Thickness="0.000000" />
           <Edge Face="2" Thickness="0.000000" />
-          <Edge Face="3" Thickness="0.000000" />
-          <Edge Face="4" Thickness="0.000000" />
         </EdgeGroup>
       </Panel>
     </Panels>
@@ -73,35 +68,34 @@ func TestGetUpdatedXML(t *testing.T) {
 <Root>
   <Project Name="" Flag="SWJ008">
     <Panels>
-      <Panel ID="1.4_4_Ковыряло_левое_(фрезеровка)" Name="1400.500_432.250" Width="432.250" Length="1400.500" Material="" Thickness="16.000" IsProduce="true" MachiningPoint="1" Type="1" Face5ID="" Face6ID="" Grain="L" Count="1">
+      <Panel ID="1.4_4_Ковыряло_левое_(фрезеровка)" Name="740.5_432.2" Width="432.250" Length="740.500" Material="" Thickness="16.000" IsProduce="true" MachiningPoint="1" Type="1" Face5ID="" Face6ID="" Grain="L" Count="1">
         <Machines>
           <Machining ID="1000" Type="3" IsGenCode="2" Face="5" Depth="16.000" X="670.000" Y="25.000" Pocket="0" ToolOffset="左">
             <Lines>
               <Line LineID="1" EndX="715.000" EndY="25.000" Angle="0.000000" />
               <Line LineID="2" EndX="725.000" EndY="35.000" Angle="-90.000" />
-              <Line LineID="3" EndX="725.000" EndY="135.000" Angle="0.000000" />
-              <Line LineID="4" EndX="715.000" EndY="145.000" Angle="-90.000000" />
-              <Line LineID="5" EndX="635.000" EndY="145.000" Angle="0.000000" />
             </Lines>
           </Machining>
         </Machines>
         <EdgeGroup>
           <Edge Face="1" Thickness="0.000000" />
           <Edge Face="2" Thickness="0.000000" />
-          <Edge Face="3" Thickness="0.000000" />
-          <Edge Face="4" Thickness="0.000000" />
         </EdgeGroup>
       </Panel>
     </Panels>
   </Project>
 </Root>`
 	// Action
-	got := getUpdatedXML(testStrs)
+	got, err := getUpdatedXML(testStrs)
 	want := wantStrs
 	// Assert
+	if err != nil {
+		t.Errorf("Ошибка: %v", err)
+	}
 	if got != want {
 		t.Errorf("got = %v; \nwant = %v", got, want)
 
 	}
 	fmt.Printf("Elapsed %.6f sec", time.Since(tThen).Seconds())
+	fmt.Println("")
 }

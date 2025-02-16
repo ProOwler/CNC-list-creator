@@ -38,7 +38,7 @@ func check(e error) {
 	}
 }
 
-func checkf(e error, text string) {
+func checkf(text string, e error) {
 	if e != nil {
 		log.Printf(text, e)
 		//panic(e)
@@ -78,7 +78,10 @@ func recursiveWalkthrough(startPath string, outputFilename string, fileFormats m
 	}
 
 	// TODO: Уточнить случаи, когда НЕ НАДО формировать итоговый файл
-	mayProcessResultList := (len(resultList) > 0) && (!hasStringInList(outputFilename, listOfDirContent))
+	// 1) надо, если есть из чего формировать этот файл
+	mayProcessResultList := (len(resultList) > 0)
+	// 2) надо, если результирующий файл отсутствует
+	mayProcessResultList = mayProcessResultList && (!hasStringInList(outputFilename, listOfDirContent))
 
 	if mayProcessResultList {
 		for _, elem := range resultList {
@@ -296,61 +299,49 @@ type XPanel struct {
 }
 
 // Возвращает XML, в котором в поле Name детали записаны длина и ширина
-func getUpdatedXML(inXML string) string {
+func getUpdatedXML(inXML string) (string, error) {
 	var root XResult
+	myHeader := `<?xml version="1.0" encoding="utf-8" ?>` + "\n"
+	updatedXML := ""
 
 	err := xml.Unmarshal([]byte(inXML), &root)
-	checkf(err, "Ошибка при разборе XML: %v")
+	checkf("Ошибка при разборе XML: %v", err)
+	if err == nil {
+		for i := range root.Project.Panels.Panel {
+			panel := &root.Project.Panels.Panel[i]
+			width64, err := strconv.ParseFloat(panel.Width, 32)
+			check(err)
+			length64, err := strconv.ParseFloat(panel.Length, 32)
+			check(err)
+			panel.Name = fmt.Sprintf("%.1f_%.1f", float32(length64), float32(width64))
+		}
 
-	for i := range root.Project.Panels.Panel {
-		panel := &root.Project.Panels.Panel[i]
-		width64, err := strconv.ParseFloat(panel.Width, 32)
-		check(err)
-		length64, err := strconv.ParseFloat(panel.Length, 32)
-		check(err)
-		panel.Name = fmt.Sprintf("%.1f_%.1f", float32(length64), float32(width64))
+		updatedXMLBytes, err := xml.MarshalIndent(root, "", "  ")
+		checkf("Ошибка при сериализации XML: %v", err)
+		updatedXML = string(updatedXMLBytes)
 	}
-
-	updatedXML, err := xml.MarshalIndent(root, "", "  ")
-	checkf(err, "Ошибка при сериализации XML: %v")
-
-	myHeader := `<?xml version="1.0" encoding="utf-8" ?>` + "\n"
-	return myHeader + string(updatedXML)
+	updatedXML = myHeader + updatedXML
+	return updatedXML, err
 }
 
 func updateFileWithXML(filePath string) {
 	if !checkIsDir(filePath) && strings.ToLower(getExtention(filePath)) == "xml" {
 		myFileBytes, err1 := os.ReadFile(filePath)
 		check(err1)
-		myFileStrings := string(myFileBytes)
-		var root XResult
-		if err := xml.Unmarshal([]byte(myFileStrings), &root); err != nil {
-			log.Printf("Ошибка при разборе XML: %v", err)
-		} else {
-			for i := range root.Project.Panels.Panel {
-				panel := &root.Project.Panels.Panel[i]
-				width64, err := strconv.ParseFloat(panel.Width, 32)
-				check(err)
-				length64, err := strconv.ParseFloat(panel.Length, 32)
-				check(err)
-				panel.Name = fmt.Sprintf("%.1f_%.1f", float32(length64), float32(width64))
-			}
 
-			updatedXML, err := xml.MarshalIndent(root, "", "  ")
-			checkf(err, "Ошибка при сериализации XML: %v")
-			myHeader := `<?xml version="1.0" encoding="utf-8" ?>` + "\n"
-			myOutputFile, err := os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE, 0755)
-			if err == nil {
-				resXML := myHeader + string(updatedXML)
-				unwantedSymbolsCount := len(myFileStrings) - len(resXML)
+		myFileStrings := string(myFileBytes)
+		myEditedXML, err1 := getUpdatedXML(myFileStrings)
+		if err1 == nil {
+			myOutputFile, err2 := os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE, 0755)
+			if err2 == nil {
+				unwantedSymbolsCount := len(myFileStrings) - len(myEditedXML)
 				if unwantedSymbolsCount > 0 {
-					resXML += strings.Repeat(" ", unwantedSymbolsCount)
+					myEditedXML += strings.Repeat(" ", unwantedSymbolsCount)
 				}
-				_, err1 = myOutputFile.WriteString(resXML)
-				check(err1)
+				_, err3 := myOutputFile.WriteString(myEditedXML)
+				check(err3)
 			}
 			check(myOutputFile.Close())
 		}
-
 	}
 }
