@@ -316,7 +316,7 @@ func getUpdatedXML(inXML string) (string, error) {
 			panel.Name = fmt.Sprintf("%.1f_%.1f", float32(length64), float32(width64))
 		}
 
-		updatedXMLBytes, err := xml.MarshalIndent(root, "", "  ")
+		updatedXMLBytes, err := xml.MarshalIndent(root, "", "	")
 		checkf("Ошибка при сериализации XML: %v", err)
 		updatedXML = string(updatedXMLBytes)
 	}
@@ -329,15 +329,11 @@ func updateFileWithXML(filePath string) {
 		myFileBytes, err1 := os.ReadFile(filePath)
 		check(err1)
 
-		myFileStrings := string(myFileBytes)
-		myEditedXML, err1 := getUpdatedXML(myFileStrings)
+		myEditedXML, err1 := getUpdatedXML(string(myFileBytes))
 		if err1 == nil {
-			myOutputFile, err2 := os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE, 0755)
+			myOutputFile, err2 := os.OpenFile(filePath, os.O_WRONLY, 0755)
 			if err2 == nil {
-				unwantedSymbolsCount := len(myFileStrings) - len(myEditedXML)
-				if unwantedSymbolsCount > 0 {
-					myEditedXML += strings.Repeat(" ", unwantedSymbolsCount)
-				}
+				check(myOutputFile.Truncate(0))
 				_, err3 := myOutputFile.WriteString(myEditedXML)
 				check(err3)
 			}
