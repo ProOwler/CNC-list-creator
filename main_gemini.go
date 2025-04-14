@@ -38,7 +38,7 @@ type XIgnoreDir struct {
 // InnerSettings: Внутреннее представление настроек программы
 type InnerSettings struct {
 	ignoreList []string // Список имен папок, которые нужно игнорировать
-	dirSource  string   // Исходная папка для сканирования
+	dirSource  string   // Исходная папка для сканирования (из файла настроек)
 	dirTarget  string   // Целевая папка (пока не используется)
 	fileReport string   // Файл отчета (пока не используется)
 }
@@ -91,27 +91,52 @@ const listFileName = "list.xml" // Имя файла, генерируемого
 
 /**
  * main: Точка входа программы.
- * 1. Инициализирует настройки из XML-файла.
- * 2. Если настройки не загружены, создает файл настроек по умолчанию.
- * 3. Если настройки загружены, запускает обработку исходной директории.
- * 4. Измеряет и выводит время выполнения.
+ * 1. Инициализирует настройки (IgnoreList и др.) из XML-файла.
+ * 2. Если настройки не загружены, создает файл настроек по умолчанию и выходит.
+ * 3. Определяет стартовую директорию: из аргумента командной строки или из настроек.
+ * 4. Запускает обработку стартовой директории.
+ * 5. Измеряет и выводит время выполнения.
  */
 func main() {
 	tThen := time.Now()
 	log.Println("Запуск программы...")
 
+	// 1. Загрузка настроек (нужны для IgnoreList и др.)
 	settingsStruct, err := initSettings(settingsFileName)
 	if err != nil {
 		log.Printf("Ошибка чтения настроек (%s): %v. Создание файла настроек по умолчанию.", settingsFileName, err)
-		// Используем Fatal, так как без настроек работа невозможна
 		checkFatal(writeDefaultSettingsToFile(settingsFileName), "Не удалось создать файл настроек по умолчанию")
 		log.Printf("Файл настроек по умолчанию '%s' создан. Пожалуйста, отредактируйте его и перезапустите программу.", settingsFileName)
+		// Выход, так как без базовых настроек (особенно IgnoreList) работа некорректна
+		return
 	} else {
 		log.Printf("Настройки успешно загружены из %s.", settingsFileName)
-		log.Printf("Исходная папка: %s", settingsStruct.dirSource)
 		log.Printf("Игнорируемые папки: %v", settingsStruct.ignoreList)
-		processSourceDirectory(settingsStruct)
 	}
+
+	// 2. Определение стартовой директории
+	var startDir string
+	progDir := filepath.Dir(os.Args[0]) // Директория, откуда запущена программа
+
+	if len(os.Args) > 1 {
+		// Используем аргумент командной строки
+		cmdArgPath := os.Args[1]
+		startDir = getAbsoluteFilepath(progDir, cmdArgPath) // Делаем путь абсолютным относительно папки программы
+		log.Printf("Используется стартовая папка из аргумента командной строки: %s", startDir)
+	} else {
+		// Используем папку из настроек
+		startDir = settingsStruct.dirSource // Путь уже абсолютный после initSettings
+		log.Printf("Аргумент командной строки не найден. Используется стартовая папка из настроек: %s", startDir)
+	}
+
+	// Проверка, что startDir не пустая (на всякий случай)
+	if startDir == "" {
+		log.Println("Ошибка: Стартовая директория не определена (ни через аргумент, ни в настройках).")
+		return
+	}
+
+	// 3. Запуск обработки
+	processSourceDirectory(startDir, settingsStruct) // Передаем определенную startDir и настройки
 
 	fmt.Printf("Выполнение завершено. Затрачено времени: %.6f сек\n", time.Since(tThen).Seconds())
 	// fmt.Scanln() // Раскомментируйте, если нужно оставлять консоль открытой после выполнения
@@ -120,24 +145,26 @@ func main() {
 // --- Функции обработки ---
 
 /**
- * processSourceDirectory: Запускает рекурсивный обход и обработку исходной директории.
- * @param settings - Загруженные настройки программы.
+ * processSourceDirectory: Запускает рекурсивный обход и обработку указанной стартовой директории.
+ * @param startDir - Абсолютный путь к директории, с которой начинается обработка.
+ * @param settings - Загруженные настройки программы (для доступа к списку игнорирования).
  */
-func processSourceDirectory(settings InnerSettings) {
-	log.Printf("Начало обработки директории: %s", settings.dirSource)
+func processSourceDirectory(startDir string, settings InnerSettings) {
+	log.Printf("Начало обработки директории: %s", startDir)
 
 	// Определение форматов файлов для обработки (из второй программы)
 	listOfFileFormats := make(myMap)
 	listOfFileFormats["7"] = "mpr"  // Код "7" для файлов .mpr
 	listOfFileFormats["11"] = "xml" // Код "11" для файлов .xml
 
-	// Проверка существования исходной директории
-	if _, err := os.Stat(settings.dirSource); os.IsNotExist(err) {
-		log.Printf("Ошибка: Исходная директория '%s' не найдена.", settings.dirSource)
+	// Проверка существования стартовой директории
+	if _, err := os.Stat(startDir); os.IsNotExist(err) {
+		log.Printf("Ошибка: Стартовая директория '%s' не найдена.", startDir)
 		return
 	}
 
-	recursiveWalkthrough(settings.dirSource, settings, listOfFileFormats)
+	// Запуск рекурсивного обхода из startDir
+	recursiveWalkthrough(startDir, settings, listOfFileFormats)
 	log.Println("Обработка директории завершена.")
 }
 
@@ -230,7 +257,10 @@ func recursiveWalkthrough(currentPath string, settings InnerSettings, fileFormat
  */
 func initSettings(pathToFileWithSettings string) (InnerSettings, error) {
 	settingsStruct := InnerSettings{}
-	absolutePath := getAbsoluteFilepath(filepath.Dir(os.Args[0]), pathToFileWithSettings)
+	// Определяем абсолютный путь к файлу настроек относительно папки программы
+	progDir := filepath.Dir(os.Args[0])
+	absolutePath := getAbsoluteFilepath(progDir, pathToFileWithSettings)
+	log.Printf("Попытка чтения файла настроек: %s", absolutePath)
 	err := settingsStruct.readFromFile(absolutePath)
 	return settingsStruct, err
 }
@@ -258,20 +288,23 @@ func (settings *InnerSettings) readFromFile(fileAbsolutePath string) error {
 	for _, el := range fileSettings.IgnoreDirList.IgnoreDir {
 		settings.ignoreList = append(settings.ignoreList, el.Name)
 	}
-	// Сохраняем пути как есть (могут быть относительными или абсолютными)
-	settings.dirSource = fileSettings.SourceDir
+	settings.dirSource = fileSettings.SourceDir // Сохраняем как есть
 	settings.dirTarget = fileSettings.TargetDir
 	settings.fileReport = fileSettings.WorkReportFile
 
-	// Валидация настроек (проверяем, что SourceDir указан)
-	if settings.dirSource == "" {
-		return errors.New("в файле настроек не указан обязательный параметр <SourceDir>")
-	}
-	// Преобразуем SourceDir в абсолютный путь относительно файла настроек, если он не абсолютный
-	settings.dirSource = getAbsoluteFilepath(filepath.Dir(fileAbsolutePath), settings.dirSource)
+	// Валидация настроек (SourceDir может быть пустой, если используется аргумент командной строки)
+	// if settings.dirSource == "" {
+	//	 return errors.New("в файле настроек не указан обязательный параметр <SourceDir>")
+	// } -> Убрали обязательность SourceDir здесь
 
-	log.Println("Настройки прочитаны:")
-	log.Printf("  SourceDir: %s", settings.dirSource)
+	// Преобразуем SourceDir в абсолютный путь относительно файла настроек, ЕСЛИ он не пустой
+	if settings.dirSource != "" {
+		settings.dirSource = getAbsoluteFilepath(filepath.Dir(fileAbsolutePath), settings.dirSource)
+	}
+
+	// Логируем прочитанные настройки (SourceDir может быть пустой)
+	log.Println("Настройки прочитаны из файла:")
+	log.Printf("  SourceDir (из файла): %s", settings.dirSource) // Может быть пустым
 	log.Printf("  TargetDir: %s", settings.dirTarget)
 	log.Printf("  WorkReportFile: %s", settings.fileReport)
 	log.Printf("  IgnoreDirList: %v", settings.ignoreList)
@@ -544,6 +577,8 @@ func getXMLProcessList(myPathList []string) string {
 }
 
 // --- Вспомогательные функции (объединенные и из обеих программ) ---
+// Функции checkFatal, getAbsoluteFilepath, getExtention, getStringCode, getFiletypeCode,
+// hasStringInSlice, countDetails остаются без изменений.
 
 /**
  * checkFatal: Проверяет ошибку и завершает программу с фатальной ошибкой, если она есть.
