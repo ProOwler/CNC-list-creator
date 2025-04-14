@@ -299,12 +299,12 @@ type XPanel struct {
 }
 
 // Возвращает XML, в котором в поле Name детали записаны длина и ширина
-func getUpdatedXML(inXML string) (string, error) {
+func getUpdatedXML(inXMLBytes []byte) (string, error) {
 	var root XResult
 	myHeader := `<?xml version="1.0" encoding="utf-8" ?>` + "\n"
 	updatedXML := ""
 
-	err := xml.Unmarshal([]byte(inXML), &root)
+	err := xml.Unmarshal(inXMLBytes, &root)
 	checkf("Ошибка при разборе XML: %v", err)
 	if err == nil {
 		for i := range root.Project.Panels.Panel {
@@ -329,7 +329,7 @@ func updateFileWithXML(filePath string) {
 		myFileBytes, err1 := os.ReadFile(filePath)
 		check(err1)
 
-		myEditedXML, err1 := getUpdatedXML(string(myFileBytes))
+		myEditedXML, err1 := getUpdatedXML(myFileBytes)
 		if err1 == nil {
 			myOutputFile, err2 := os.OpenFile(filePath, os.O_WRONLY, 0755)
 			if err2 == nil {

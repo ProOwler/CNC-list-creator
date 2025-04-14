@@ -86,14 +86,13 @@ func TestGetUpdatedXML(t *testing.T) {
 	</Project>
 </Root>`
 	// Action
-	got, err := getUpdatedXML(testStrs)
-	want := wantStrs
+	got, err := getUpdatedXML([]byte(testStrs))
 	// Assert
 	if err != nil {
 		t.Errorf("Ошибка: %v", err)
 	}
-	if got != want {
-		t.Errorf("got = %v; \nwant = %v", got, want)
+	if got != wantStrs {
+		t.Errorf("got = %v; \nwant = %v", got, wantStrs)
 
 	}
 	fmt.Printf("Elapsed %.6f sec", time.Since(tThen).Seconds())
