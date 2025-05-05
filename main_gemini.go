@@ -2,7 +2,7 @@ package main
 
 import (
 	"encoding/xml"
-	"errors"
+	//	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -43,9 +43,6 @@ type InnerSettings struct {
 	fileReport string   // Файл отчета (пока не используется)
 }
 
-// myMap: Пользовательский тип для хранения сопоставлений (например, кодов и расширений файлов)
-type myMap map[string]string
-
 // XResult: Структура для разбора XML-файлов деталей (из второй программы)
 type XResult struct {
 	XMLName xml.Name `xml:"Root"`
@@ -83,9 +80,15 @@ type XPanel struct {
 	EdgeGroup      string `xml:",innerxml"`
 }
 
+// myMap: Пользовательский тип для хранения сопоставлений (например, кодов и расширений файлов)
+type myMap map[string]string
+
 // --- Глобальные переменные и константы ---
-const settingsFileName = "report_settings.xml"
+const settingsFileName = "listMaker_settings.xml"
 const listFileName = "list.xml" // Имя файла, генерируемого в каждой папке
+const stopWords = []string{"list", "ready", "fasady"}
+
+var listOfFileFormats = make(myMap)
 
 // --- Основная функция ---
 
@@ -100,14 +103,16 @@ const listFileName = "list.xml" // Имя файла, генерируемого
 func main() {
 	tThen := time.Now()
 	log.Println("Запуск программы...")
+	//log.Println(os.Args[1])
 
 	// 1. Загрузка настроек (нужны для IgnoreList и др.)
 	settingsStruct, err := initSettings(settingsFileName)
 	if err != nil {
-		log.Printf("Ошибка чтения настроек (%s): %v. Создание файла настроек по умолчанию.", settingsFileName, err)
-		checkFatal(writeDefaultSettingsToFile(settingsFileName), "Не удалось создать файл настроек по умолчанию")
-		log.Printf("Файл настроек по умолчанию '%s' создан. Пожалуйста, отредактируйте его и перезапустите программу.", settingsFileName)
+		log.Printf("Ошибка чтения настроек (%s): %v. Создание файла настроек по умолчанию.\n", settingsFileName, err)
+		checkFatal(writeDefaultSettingsToFile(settingsFileName), "Не удалось создать файл настроек по умолчанию\n")
+		log.Printf("Файл настроек по умолчанию '%s' создан. Пожалуйста, отредактируйте его и перезапустите программу.\n", settingsFileName)
 		// Выход, так как без базовых настроек (особенно IgnoreList) работа некорректна
+		fmt.Scanln()
 		return
 	} else {
 		log.Printf("Настройки успешно загружены из %s.", settingsFileName)
@@ -116,17 +121,16 @@ func main() {
 
 	// 2. Определение стартовой директории
 	var startDir string
-	progDir := filepath.Dir(os.Args[0]) // Директория, откуда запущена программа
 
 	if len(os.Args) > 1 {
+		progDir := filepath.Dir(os.Args[0]) // Директория, откуда запущена программа
 		// Используем аргумент командной строки
-		cmdArgPath := os.Args[1]
-		startDir = getAbsoluteFilepath(progDir, cmdArgPath) // Делаем путь абсолютным относительно папки программы
+		startDir = getAbsoluteFilepath(progDir, os.Args[1]) // Делаем путь абсолютным относительно папки программы
 		log.Printf("Используется стартовая папка из аргумента командной строки: %s", startDir)
 	} else {
 		// Используем папку из настроек
 		startDir = settingsStruct.dirSource // Путь уже абсолютный после initSettings
-		log.Printf("Аргумент командной строки не найден. Используется стартовая папка из настроек: %s", startDir)
+		// log.Printf("Аргумент командной строки не найден. Используется стартовая папка из настроек: %s", startDir)
 	}
 
 	// Проверка, что startDir не пустая (на всякий случай)
@@ -138,6 +142,7 @@ func main() {
 	// 3. Запуск обработки
 	processSourceDirectory(startDir, settingsStruct) // Передаем определенную startDir и настройки
 
+	fmt.Printf("Стартовая папка фактическая: %s\n", startDir)
 	fmt.Printf("Выполнение завершено. Затрачено времени: %.6f сек\n", time.Since(tThen).Seconds())
 	// fmt.Scanln() // Раскомментируйте, если нужно оставлять консоль открытой после выполнения
 }
@@ -153,28 +158,50 @@ func processSourceDirectory(startDir string, settings InnerSettings) {
 	log.Printf("Начало обработки директории: %s", startDir)
 
 	// Определение форматов файлов для обработки (из второй программы)
-	listOfFileFormats := make(myMap)
 	listOfFileFormats["7"] = "mpr"  // Код "7" для файлов .mpr
 	listOfFileFormats["11"] = "xml" // Код "11" для файлов .xml
 
-	// Проверка существования стартовой директории
-	if _, err := os.Stat(startDir); os.IsNotExist(err) {
-		log.Printf("Ошибка: Стартовая директория '%s' не найдена.", startDir)
-		return
-	}
-
 	// Запуск рекурсивного обхода из startDir
-	recursiveWalkthrough(startDir, settings, listOfFileFormats)
+	recursiveWalkthrough(startDir, settings)
 	log.Println("Обработка директории завершена.")
 }
 
+/*
+Ещё раз, общий алгоритм, чтоб много раз не вставать
+
+первый запуск recursiveWalkthrough (далее "RWt()") не оставляет следов в осматриваемой папке,
+но во всех вложенных папках может оставить файл с меткой о выполнении заказа (метка - файл с названием order_ready_yyyymmdd.xml)
+вместо этого первый запуск RWt() должен все выполненные заказы перемещать в целевую папку
+
+в каждой папке, в которую RWt() зашла во время обхода возможны взаимно исключающие исходы:
+- создала метку о выполнении заказа // во всех подпапках есть файлы с подстрокой "ready" в названии
+- создала файл list.xml и обработала (попыталась) XML-файлы // в этой папке нет list.xml И есть подходящие файлы
+- ничего не произошло
+
+Соответственно, первым делом нужно всё содержимое осматриваемой папки разделить на 2 перечня - [подпапки, файлы],
+далее, запустить во всех подпапках RWt()
+	- если во всех случаях вернулись данные о завершении заказа,
+		сформировать отчёт о выполнении заказа,
+		записать его в файл (оставить метку) и
+		ЗАВЕРШИТЬ выполнение функции, вернув содержимое отчёта
+после этого обработать перечень файлов:
+	- если есть
+*/
 /**
  * recursiveWalkthrough: Рекурсивно обходит директории, обрабатывает файлы и создает list.xml.
  * @param currentPath - Текущая директория для обхода.
  * @param settings - Настройки программы (для доступа к списку игнорирования).
- * @param fileFormats - Карта разрешенных форматов файлов и их кодов.
  */
-func recursiveWalkthrough(currentPath string, settings InnerSettings, fileFormats myMap) {
+func recursiveWalkthrough(currentPath string, settings InnerSettings) {
+	/* TODO
+	открываем папку, смотрим
+	если там нет файлов, список не создаём
+	если есть XML-файл со словами const stopWords = []string{"list", "ready", "fasady"} в имени, список не создаём
+	если там есть папки, заходим в каждую из них
+
+	тут ещё должно быть про перенос папок завершённых проектов в папку с выполненными проектами
+	*/
+
 	log.Printf("Сканирование папки: %s", currentPath)
 
 	// Получаем список содержимого текущей директории
@@ -204,11 +231,11 @@ func recursiveWalkthrough(currentPath string, settings InnerSettings, fileFormat
 				continue // Пропускаем игнорируемую папку
 			}
 			// Рекурсивный вызов для вложенной папки
-			recursiveWalkthrough(fullEntryPath, settings, fileFormats)
+			recursiveWalkthrough(fullEntryPath, settings)
 		} else {
 			// Это файл, проверяем расширение
 			fileExt := strings.ToLower(getExtention(entryName))
-			if getStringCode(fileFormats, fileExt) != "" {
+			if getStringCode(listOfFileFormats, fileExt) != "" {
 				// Файл имеет одно из нужных расширений
 				filesToProcess = append(filesToProcess, fullEntryPath)
 				log.Printf("Найден файл для обработки: %s", fullEntryPath)
@@ -217,12 +244,8 @@ func recursiveWalkthrough(currentPath string, settings InnerSettings, fileFormat
 	}
 
 	// Обработка найденных файлов и создание list.xml для *текущей* директории
-	// Условия из второй программы:
-	// 1) Есть файлы для обработки (filesToProcess не пуст)
-	// 2) Файл list.xml еще не существует в этой папке
-	shouldCreateListFile := (len(filesToProcess) > 0) && (!hasStringInSlice(listFileName, currentDirContentNames))
 
-	if shouldCreateListFile {
+	if shouldCreateListFile(filesToProcess, currentDirContentNames) {
 		log.Printf("Создание %s в папке %s...", listFileName, currentPath)
 		// Сначала обновляем XML файлы (если они есть в списке)
 		for _, filePath := range filesToProcess {
@@ -232,7 +255,7 @@ func recursiveWalkthrough(currentPath string, settings InnerSettings, fileFormat
 		}
 
 		// Затем генерируем содержимое list.xml
-		outputXMLString := getOutputXML(filesToProcess, fileFormats)
+		outputXMLString := getOutputXML(filesToProcess, listOfFileFormats)
 		outputFilePath := filepath.Join(currentPath, listFileName)
 
 		// Записываем list.xml
@@ -245,6 +268,17 @@ func recursiveWalkthrough(currentPath string, settings InnerSettings, fileFormat
 	} else if len(filesToProcess) > 0 {
 		log.Printf("Файл %s уже существует в папке %s, новый не создается.", listFileName, currentPath)
 	}
+}
+
+// Условия из второй программы:
+// 1) Есть файлы для обработки (filesToProcess не пуст)
+// 2) Файл list.xml еще не существует в этой папке
+func shouldCreateListFile(filesToProcess []string, currentDirContentNames []string) bool {
+	return (len(filesToProcess) > 0) && (!hasStringInSlice(listFileName, currentDirContentNames))
+}
+
+func shouldProcessDir(dirsToProcess []string, currentDirContentNames []string) bool {
+	return true
 }
 
 // --- Функции работы с настройками (из первой программы) ---
@@ -274,13 +308,13 @@ func initSettings(pathToFileWithSettings string) (InnerSettings, error) {
 func (settings *InnerSettings) readFromFile(fileAbsolutePath string) error {
 	myFileBytes, err := os.ReadFile(fileAbsolutePath)
 	if err != nil {
-		return fmt.Errorf("не удалось прочитать файл настроек %s: %w", fileAbsolutePath, err)
+		return fmt.Errorf("Не удалось прочитать файл настроек %s: %w\n", fileAbsolutePath, err)
 	}
 
 	var fileSettings XMLSettings
 	err = xml.Unmarshal(myFileBytes, &fileSettings)
 	if err != nil {
-		return fmt.Errorf("не удалось разобрать XML из файла настроек %s: %w", fileAbsolutePath, err)
+		return fmt.Errorf("Не удалось разобрать XML из файла настроек %s: %w\n", fileAbsolutePath, err)
 	}
 
 	// Заполнение внутренней структуры настроек
@@ -288,23 +322,19 @@ func (settings *InnerSettings) readFromFile(fileAbsolutePath string) error {
 	for _, el := range fileSettings.IgnoreDirList.IgnoreDir {
 		settings.ignoreList = append(settings.ignoreList, el.Name)
 	}
-	settings.dirSource = fileSettings.SourceDir // Сохраняем как есть
-	settings.dirTarget = fileSettings.TargetDir
-	settings.fileReport = fileSettings.WorkReportFile
+	settings.dirTarget = getAbsoluteFilepath(filepath.Dir(fileAbsolutePath), fileSettings.TargetDir)
+	settings.fileReport = getAbsoluteFilepath(filepath.Dir(fileAbsolutePath), fileSettings.WorkReportFile)
 
-	// Валидация настроек (SourceDir может быть пустой, если используется аргумент командной строки)
-	// if settings.dirSource == "" {
-	//	 return errors.New("в файле настроек не указан обязательный параметр <SourceDir>")
-	// } -> Убрали обязательность SourceDir здесь
-
-	// Преобразуем SourceDir в абсолютный путь относительно файла настроек, ЕСЛИ он не пустой
-	if settings.dirSource != "" {
-		settings.dirSource = getAbsoluteFilepath(filepath.Dir(fileAbsolutePath), settings.dirSource)
+	// Валидация настроек (Если SourceDir пуст, станет ".")
+	if fileSettings.SourceDir == "" {
+		settings.dirSource = getAbsoluteFilepath(filepath.Dir(fileAbsolutePath), ".")
+	} else {
+		settings.dirSource = getAbsoluteFilepath(filepath.Dir(fileAbsolutePath), fileSettings.SourceDir)
 	}
 
-	// Логируем прочитанные настройки (SourceDir может быть пустой)
+	// Логируем прочитанные настройки
 	log.Println("Настройки прочитаны из файла:")
-	log.Printf("  SourceDir (из файла): %s", settings.dirSource) // Может быть пустым
+	log.Printf("  SourceDir (из файла): %s", settings.dirSource)
 	log.Printf("  TargetDir: %s", settings.dirTarget)
 	log.Printf("  WorkReportFile: %s", settings.fileReport)
 	log.Printf("  IgnoreDirList: %v", settings.ignoreList)
@@ -343,26 +373,27 @@ func (settings *InnerSettings) isIgnored(dirPath string) (bool, error) {
 		return false, nil
 	}
 
-	// Приводим список игнорирования к нижнему регистру для сравнения без учета регистра
-	ignoreListLower := make([]string, len(settings.ignoreList))
-	for i, ignoredName := range settings.ignoreList {
-		ignoreListLower[i] = strings.ToLower(ignoredName)
+	// Проверяет наличие папки в списке игнорирования
+	return hasStringInList(dirName, settings.ignoreList), nil
+}
+
+// Проверяет наличие строки в массиве строк
+func hasStringInList(searchFor string, stringList []string) bool {
+	// Приводим массив к нижнему регистру для сравнения без учета регистра
+	stringListLower := make([]string, len(stringList))
+	for i, en := range stringList {
+		stringListLower[i] = strings.ToLower(en)
 	}
-	// Сортируем для бинарного поиска
-	sort.Strings(ignoreListLower)
+	// Приводим искомую строку к нижнему регистру
+	searchForLower := strings.ToLower(searchFor)
 
-	// Приводим имя текущей папки к нижнему регистру
-	dirNameLower := strings.ToLower(dirName)
-
-	// Ищем имя папки в отсортированном списке игнорирования
-	pos := sort.SearchStrings(ignoreListLower, dirNameLower)
-
-	// Проверяем, найдено ли точное совпадение
-	if pos < len(ignoreListLower) && ignoreListLower[pos] == dirNameLower {
-		return true, nil // Найдено в списке игнорирования
+	sort.Strings(stringListLower)
+	pos := sort.SearchStrings(stringListLower, searchForLower)
+	if pos >= len(stringListLower) {
+		return false
 	}
-
-	return false, nil // Не найдено
+	res := searchForLower == stringListLower[pos]
+	return res
 }
 
 /**
@@ -381,8 +412,8 @@ func writeDefaultSettingsToFile(fileAbsolutePath string) error {
 		<IgnoreDir Name=".git"/>
 		<IgnoreDir Name=".svn"/>
 	</IgnoreDirList>
-	<SourceDir>./input_files</SourceDir>
-	<TargetDir>./processed_files</TargetDir>
+	<SourceDir>.</SourceDir>
+	<TargetDir>./#ВЫПОЛНЕННЫЕ</TargetDir>
 	<WorkReportFile>WorkReport.xml</WorkReportFile>
 </Root>`
 
@@ -467,16 +498,17 @@ func getUpdatedXML(inXMLBytes []byte) (string, error) {
 	updated := false // Флаг, что хотя бы одно имя было обновлено
 	for i := range root.Project.Panels.Panel {
 		panel := &root.Project.Panels.Panel[i]
-		// Используем .1f для одного знака после запятой
 		width64, errW := strconv.ParseFloat(strings.Replace(panel.Width, ",", ".", 1), 64)
 		length64, errL := strconv.ParseFloat(strings.Replace(panel.Length, ",", ".", 1), 64)
+		thickness64, errT := strconv.ParseFloat(strings.Replace(panel.Thickness, ",", ".", 1), 64)
 
-		if errW != nil || errL != nil {
-			log.Printf("Предупреждение: Не удалось преобразовать Width ('%s') или Length ('%s') в число для панели ID='%s', Name='%s'. Имя не будет обновлено.", panel.Width, panel.Length, panel.ID, panel.Name)
+		if errW != nil || errL != nil || errT != nil {
+			log.Printf("Предупреждение: Не удалось преобразовать Длину ('%s'), Ширину ('%s') или Толщину ('%s') в число для панели ID='%s'. Имя не будет обновлено.", panel.Length, panel.Width, panel.Thickness, panel.ID)
 			continue // Пропускаем эту панель, если размеры некорректны
 		}
 
-		newName := fmt.Sprintf("%.1f_%.1f", length64, width64)
+		// Используем .0f, чтоб не было знаков после запятой
+		newName := fmt.Sprintf("%.0f_%.0f_%.0f", length64, width64, thickness64)
 		if panel.Name != newName {
 			panel.Name = newName
 			updated = true
@@ -484,7 +516,7 @@ func getUpdatedXML(inXMLBytes []byte) (string, error) {
 	}
 
 	if !updated {
-		log.Println("Обновление XML не требуется, имена панелей уже соответствуют формату Длина_Ширина.")
+		log.Println("Обновление XML не требуется, имена панелей уже соответствуют формату Длина_Ширина_Толщина.")
 		// Возвращаем исходные байты с заголовком, чтобы избежать лишней сериализации
 		return myHeader + string(inXMLBytes), nil
 	}
