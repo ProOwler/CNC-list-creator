@@ -142,15 +142,27 @@ type ReportObj struct {
 type myMap map[string]string
 
 // --- Глобальные переменные и константы ---
+
+// имя файла настроек
 const settingsFileName = "listMaker_settings.xml"
-const listFileName = "list.xml" // Имя файла, генерируемого в каждой папке
-//const stopWords = []string{"list", "ready", "fasady"}
+
+// Имя файла, генерируемого в каждой папке
+const listFileName = "list.xml"
+
+// стоп-слова, наличие которых надо проверять в именах файлов
+var stopWords = []string{"list", "ready", "fasady"}
 
 // статусы обработки папок
 const (
 	stOTHER string = "Иное"
 	stREADY string = "Готов"
 	stWORK  string = "Ожидает"
+)
+
+// константы для разбития строки на части
+const (
+	prtDETAIL int = 2
+	prtDATE   int = -1
 )
 
 var listOfFileFormats = make(myMap)
@@ -259,28 +271,7 @@ func (item *XReportItem) convertReportItemToObj() ReportObj {
 }
 
 func myTTest() {
-	testData := `<Root>
-	<ReportItemList>
-		<ReportItem ItemName="Тест-заказ" Status="Ожидает" DateReady="" Level="1">
-			<ReportItemList>
-				<ReportItem ItemName="ЛДСП Белый Шагрень" Status="Готов" DateReady="2025-06-01" Level="0">
-					<ReportItemList></ReportItemList>
-				</ReportItem>
-				<ReportItem ItemName="ЛДСП Белый ГП" Status="Ожидает" DateReady="" Level="0">
-					<ReportItemList></ReportItemList>
-				</ReportItem>
-			</ReportItemList>
-		</ReportItem>
-	</ReportItemList>
-</Root>`
-	var root XReportHead
-	err := xml.Unmarshal([]byte(testData), &root)
-	if err != nil {
-		log.Printf("Ошибка при разборе XML для обновления: %v", err)
-		return
-	}
-	reportObjects := getReportObjects(root)
-	log.Println(reportObjects)
+	log.Println(getReadyDate("ready_20241205.xml"))
 	return
 }
 
@@ -400,13 +391,15 @@ func processSourceDirectory(startDir string, settings InnerSettings) {
  * @param currentPath - Текущая директория для обхода.
  * @param settings - Настройки программы (для доступа к списку игнорирования).
  */
-func recursiveWalkthrough2(currentPath string, settings InnerSettings) {
+func recursiveWalkthrough2(currentPath string, settings InnerSettings) ReportObj {
 	// Получаем список содержимого текущей директории
 	dirEntries, err := os.ReadDir(currentPath)
 	if err != nil {
 		log.Printf("Ошибка чтения директории %s: %v", currentPath, err)
-		return
+		return ReportObj{}
 	}
+
+	// алг - всё содержимое осматриваемой папки разделить на 2 перечня - [подпапки, файлы]
 	var dirEntriesFileNames, dirEntriesDirNames []string
 	for _, entry := range dirEntries {
 		entryFullPath := filepath.Join(currentPath, entry.Name())
@@ -428,15 +421,79 @@ func recursiveWalkthrough2(currentPath string, settings InnerSettings) {
 	}
 
 	sort.Strings(dirEntriesFileNames)
-	for _, fileName := range dirEntriesFileNames {
-		if filepath.Base(fileName) == "list.xml" {
-			log.Println("Есть файл-список заданий")
-			return
+	// алг - если есть файл "плейлист" (list.xml),
+	if hasStringInList("list.xml", dirEntriesFileNames) {
+		log.Println("Есть файл-список заданий")
+		return ReportObj{
+			itemName:  currentPath,
+			level:     0,
+			dateReady: "",
+			status:    stWORK,
 		}
+	}
+	for _, fileName := range dirEntriesFileNames {
+		if strings.Contains(filepath.Base(fileName), "ready") {
+			// алг - если есть файл "плейлист фасадов" выполненный (ready_fasady.xml),
+			if strings.Contains(filepath.Base(fileName), "fasady") {
+				log.Printf("Путь: %s. Переместите файл ready_fasady.xml в папки с фасадами\n", currentPath)
+				return ReportObj{
+					itemName:  currentPath,
+					level:     0,
+					dateReady: "",
+					status:    stWORK,
+				}
+			}
+			// алг - если есть файл-метка-отчёт order_ready_yyyymmdd.xml,
+			if strings.Contains(filepath.Base(fileName), "order") {
+				if dateString := getReadyDate(filepath.Base(fileName)); dateString != "" {
+					return ReportObj{
+						itemName:   currentPath,
+						level:      0,
+						dateReady:  dateString,
+						status:     stREADY,
+						innerItems: getReportObjectsFromFile(fileName),
+					}
+				} else {
+					log.Printf("Ошибка извлечения даты из имени файла %s\n", fileName)
+					return ReportObj{}
+				}
+			}
+			// алг - если есть выполненный файл "плейлист" (ready_yyyymmdd.xml),
+			if dateString := getReadyDate(filepath.Base(fileName)); dateString != "" {
+				return ReportObj{
+					itemName:  currentPath,
+					level:     0,
+					dateReady: dateString,
+					status:    stREADY,
+				}
+			} else {
+				log.Printf("Ошибка извлечения даты из имени файла %s\n", fileName)
+				return ReportObj{}
+			}
+		}
+		// алг - если есть подходящие для обработки файлы-задания,
+		/*
+			обработать их,
+			сформировать отчёт с записью о том, что папка в работе (статус ОЖИДАЕТ)
+			ЗАВЕРШИТЬ выполнение функции, вернуть отчёт
+		*/
 	}
 	sort.Strings(dirEntriesDirNames)
 
-	return
+	return ReportObj{}
+}
+
+func createReport() ReportObj {
+	return ReportObj{}
+}
+
+func getReadyDate(shortFileName string) string {
+	datePart := getPartFromDividedString(strings.TrimSuffix(shortFileName, filepath.Ext(shortFileName)), prtDATE)
+	return datePart[0:4] + "-" + datePart[4:6] + "-" + datePart[6:]
+}
+
+func getReportObjectsFromFile(fullFileName string) []ReportObj {
+	return []ReportObj{{}}
 }
 
 /**
@@ -487,7 +544,7 @@ func recursiveWalkthrough(currentPath string, settings InnerSettings) {
 		} else {
 			// Это файл, проверяем расширение
 			fileExt := strings.ToLower(getExtention(entryName))
-			if getStringCode(listOfFileFormats, fileExt) != "" {
+			if getFiletypeCode(listOfFileFormats, fileExt) != "" {
 				// Файл имеет одно из нужных расширений
 				filesToProcess = append(filesToProcess, fullEntryPath)
 				log.Printf("Найден файл для обработки: %s", fullEntryPath)
@@ -819,7 +876,7 @@ func getXMLFileList(myPathList []string, extCodes myMap) string {
 	for _, pathEntry := range myPathList {
 		sb.WriteString("		<Item>\n")
 		sb.WriteString("			<FileType>")
-		sb.WriteString(getFiletypeCode(pathEntry, extCodes)) // Получаем код типа файла
+		sb.WriteString(getFiletypeCode(extCodes, getExtention(pathEntry))) // Получаем код типа файла
 		sb.WriteString("</FileType>\n")
 		sb.WriteString("			<FilePath>")
 		// Экранируем специальные символы XML в пути к файлу
@@ -860,9 +917,7 @@ func getXMLProcessList(myPathList []string) string {
 	return sb.String()
 }
 
-// --- Вспомогательные функции (объединенные и из обеих программ) ---
-// Функции checkFatal, getAbsoluteFilepath, getExtention, getStringCode, getFiletypeCode,
-// hasStringInSlice, countDetails остаются без изменений.
+// --- Вспомогательные функции
 
 /**
  * checkFatal: Проверяет ошибку и завершает программу с фатальной ошибкой, если она есть.
@@ -903,29 +958,19 @@ func getExtention(name string) string {
 	return "" // Пустая строка, если нет расширения
 }
 
-/**
- * getStringCode: Ищет значение в карте myMap и возвращает соответствующий ключ.
+/** Возвращает код типа файла на основе его расширения
+ * getFiletypeCode: Ищет значение в карте myMap и возвращает соответствующий ключ.
  * @param storage - Карта для поиска.
  * @param s - Значение для поиска (например, расширение файла).
  * @return string - Ключ (код) или пустая строка, если значение не найдено.
  */
-func getStringCode(storage myMap, s string) string {
+func getFiletypeCode(storage myMap, s string) string {
 	for k, v := range storage {
 		if v == s {
 			return k
 		}
 	}
 	return ""
-}
-
-/**
- * getFiletypeCode: Возвращает код типа файла на основе его расширения.
- * @param myPath - Путь к файлу.
- * @param extCodes - Карта кодов и расширений.
- * @return string - Код типа файла или пустая строка.
- */
-func getFiletypeCode(myPath string, extCodes myMap) string {
-	return getStringCode(extCodes, getExtention(myPath))
 }
 
 /**
@@ -951,22 +996,46 @@ func hasStringInSlice(searchFor string, stringSlice []string) bool {
  * @return string - Строка с количеством или пустая строка, если не найдено или формат неверный.
  */
 func countDetails(detailCode string) string {
-	codeParts := strings.Split(detailCode, "_")
 	// Ожидаем как минимум 2 части (код_количество)
-	if len(codeParts) < 2 {
+	// Если все проверки пройдены, возвращаем извлеченное количество
+	return checkDetailsAmount(getPartFromDividedString(detailCode, prtDETAIL))
+}
+
+func getPartFromDividedString(filename string, flag int) string {
+	parts := strings.Split(filename, "_")
+	switch {
+	case flag == prtDETAIL:
+		if len(parts) < prtDETAIL {
+			return ""
+		} else {
+			return parts[prtDETAIL-1]
+		}
+	case flag == prtDATE:
+		if len(parts) == 0 {
+			return ""
+		} else {
+			return parts[len(parts)-1]
+		}
+	default:
 		return ""
 	}
-	// Вторая часть должна быть количеством
-	countPart := codeParts[1]
-	if countPart == "" {
+}
+
+/**
+ * checkDetailsAmount: Проверяет строковое значение количества деталей.
+ * @param inString - Строка с предположительно количеством деталей
+ * @return string - Строка с количеством, если всё ОК, или пустая строка, если что-то пошло не так
+ */
+func checkDetailsAmount(inString string) string {
+	if inString == "" {
 		return ""
 	}
-	// Проверяем, что вторая часть состоит только из цифр
-	for _, r := range countPart {
+	// Проверяем, что строка состоит только из цифр
+	for _, r := range inString {
 		if !unicode.IsDigit(r) {
 			return "" // Если есть нецифровой символ, формат неверный
 		}
 	}
 	// Если все проверки пройдены, возвращаем извлеченное количество
-	return countPart
+	return inString
 }
