@@ -150,19 +150,26 @@ const settingsFileName = "listMaker_settings.xml"
 const listFileName = "list.xml"
 
 // стоп-слова, наличие которых надо проверять в именах файлов
-var stopWords = []string{"list", "ready", "fasady"}
+var stopWords = []string{"fasady", "list", "ready"}
 
 // статусы обработки папок
 const (
-	stOTHER string = "Иное"
-	stREADY string = "Готов"
-	stWORK  string = "Ожидает"
+	c_ST_OTHER   string = "Иное"
+	c_ST_READY   string = "Готов"
+	c_ST_PENDING string = "Ожидает"
 )
 
 // константы для разбития строки на части
 const (
-	prtDETAIL int = 2
-	prtDATE   int = -1
+	c_PRT_DETAIL int = 2
+	c_PRT_DATE   int = -1
+)
+
+// константы, как обрабатывать файлы в папке
+const (
+	c_PROC_NO = iota
+	c_PROC_XML
+	c_PROC_MPR
 )
 
 var listOfFileFormats = make(myMap)
@@ -271,7 +278,9 @@ func (item *XReportItem) convertReportItemToObj() ReportObj {
 }
 
 func myTTest() {
-	log.Println(getReadyDate("ready_20241205.xml"))
+	log.Println("----")
+	log.Println(getReadyDate("ready_241205.xml"))
+	log.Println("----")
 	return
 }
 
@@ -384,8 +393,6 @@ func processSourceDirectory(startDir string, settings InnerSettings) {
 
 */
 
-// filepath.Base("/foo/bar/baz.js") -> "baz.js"
-
 /**
  * recursiveWalkthrough: Рекурсивно обходит директории, обрабатывает файлы и создает list.xml.
  * @param currentPath - Текущая директория для обхода.
@@ -400,12 +407,13 @@ func recursiveWalkthrough2(currentPath string, settings InnerSettings) ReportObj
 	}
 
 	// алг - всё содержимое осматриваемой папки разделить на 2 перечня - [подпапки, файлы]
-	var dirEntriesFileNames, dirEntriesDirNames []string
+	var dirEntriesFileNames, dirEntriesDirNames, fullnamesToProceed []string
 	for _, entry := range dirEntries {
 		entryFullPath := filepath.Join(currentPath, entry.Name())
 		if entry.IsDir() {
 			// Проверяем, нужно ли игнорировать эту директорию
-			isIgnored, errIgnore := settings.isIgnored(entryFullPath) // Проверяем по полному пути
+			// isIgnored, errIgnore := settings.isIgnored(entryFullPath) // Проверяем по полному пути
+			isIgnored, errIgnore := settings.isIgnored(entry.Name()) // Проверяем по *имени* папки
 			if errIgnore != nil {
 				log.Printf("Ошибка проверки игнорирования для %s: %v", entryFullPath, errIgnore)
 				continue // Пропускаем папку, если не удалось проверить
@@ -420,76 +428,173 @@ func recursiveWalkthrough2(currentPath string, settings InnerSettings) ReportObj
 		}
 	}
 
-	sort.Strings(dirEntriesFileNames)
-	// алг - если есть файл "плейлист" (list.xml),
-	if hasStringInList("list.xml", dirEntriesFileNames) {
-		log.Println("Есть файл-список заданий")
+	if len(dirEntriesFileNames) > 0 {
+		sort.Strings(dirEntriesFileNames)
+		// алг - если есть файл "плейлист" (list.xml),
+		if hasStringInList(listFileName, dirEntriesFileNames) {
+			log.Println("Есть файл-список заданий")
+			return ReportObj{
+				itemName:  currentPath,
+				level:     0,
+				dateReady: "",
+				status:    c_ST_PENDING,
+			}
+		}
+		for _, fileName := range dirEntriesFileNames {
+			if strings.Contains(filepath.Base(fileName), "ready") {
+				// алг - если есть файл "плейлист фасадов" выполненный (ready_fasady.xml),
+				if strings.Contains(filepath.Base(fileName), "fasady") {
+					log.Printf("Путь: %s. Переместите файл ready_fasady.xml в папки с фасадами\n", currentPath)
+					return ReportObj{
+						itemName:  currentPath,
+						level:     0,
+						dateReady: "",
+						status:    c_ST_PENDING,
+					}
+				}
+				// алг - если есть файл-метка-отчёт order_ready_yyyymmdd.xml,
+				if strings.Contains(filepath.Base(fileName), "order") {
+					if dateString := getReadyDate(filepath.Base(fileName)); dateString != "" {
+						return ReportObj{
+							itemName:   currentPath,
+							level:      0,
+							dateReady:  dateString,
+							status:     c_ST_READY,
+							innerItems: getReportObjectsFromFile(fileName),
+						}
+					} else {
+						log.Printf("Ошибка извлечения даты из имени файла %s\n", fileName)
+						return ReportObj{
+							itemName:   currentPath,
+							level:      0,
+							dateReady:  dateString,
+							status:     c_ST_PENDING,
+							innerItems: getReportObjectsFromFile(fileName),
+						}
+					}
+				}
+				// алг - если есть выполненный файл "плейлист" (ready_yyyymmdd.xml),
+				if dateString := getReadyDate(filepath.Base(fileName)); dateString != "" {
+					return ReportObj{
+						itemName:  currentPath,
+						level:     0,
+						dateReady: dateString,
+						status:    c_ST_READY,
+					}
+				} else {
+					log.Printf("Ошибка извлечения даты из имени файла %s\n", fileName)
+					return ReportObj{
+						itemName:  currentPath,
+						level:     0,
+						dateReady: dateString,
+						status:    c_ST_PENDING,
+					}
+				}
+			}
+			// алг - если есть подходящие для обработки файлы-задания, обработать их,
+			// пропускаем файлы со стоп-словами
+			if hasStringInSlice(strings.ToLower(filepath.Base(fileName)), stopWords) {
+				continue
+			}
+			// MPR
+			if strings.ToLower(getExtention(fileName)) == "mpr" {
+				fullnamesToProceed = append(fullnamesToProceed, fileName)
+			}
+			// XML
+			if strings.ToLower(getExtention(fileName)) == "xml" {
+				updateFileWithXML(fileName)
+				fullnamesToProceed = append(fullnamesToProceed, fileName)
+			}
+		}
+		// создать плейлист
+		createPlaylist(fullnamesToProceed, currentPath)
+		//	сформировать отчёт с записью о том, что папка в работе (статус ОЖИДАЕТ)
+		//	ЗАВЕРШИТЬ выполнение функции, вернуть отчёт
 		return ReportObj{
 			itemName:  currentPath,
 			level:     0,
 			dateReady: "",
-			status:    stWORK,
+			status:    c_ST_PENDING,
 		}
 	}
-	for _, fileName := range dirEntriesFileNames {
-		if strings.Contains(filepath.Base(fileName), "ready") {
-			// алг - если есть файл "плейлист фасадов" выполненный (ready_fasady.xml),
-			if strings.Contains(filepath.Base(fileName), "fasady") {
-				log.Printf("Путь: %s. Переместите файл ready_fasady.xml в папки с фасадами\n", currentPath)
-				return ReportObj{
-					itemName:  currentPath,
-					level:     0,
-					dateReady: "",
-					status:    stWORK,
-				}
-			}
-			// алг - если есть файл-метка-отчёт order_ready_yyyymmdd.xml,
-			if strings.Contains(filepath.Base(fileName), "order") {
-				if dateString := getReadyDate(filepath.Base(fileName)); dateString != "" {
-					return ReportObj{
-						itemName:   currentPath,
-						level:      0,
-						dateReady:  dateString,
-						status:     stREADY,
-						innerItems: getReportObjectsFromFile(fileName),
-					}
-				} else {
-					log.Printf("Ошибка извлечения даты из имени файла %s\n", fileName)
-					return ReportObj{}
-				}
-			}
-			// алг - если есть выполненный файл "плейлист" (ready_yyyymmdd.xml),
-			if dateString := getReadyDate(filepath.Base(fileName)); dateString != "" {
-				return ReportObj{
-					itemName:  currentPath,
-					level:     0,
-					dateReady: dateString,
-					status:    stREADY,
-				}
-			} else {
-				log.Printf("Ошибка извлечения даты из имени файла %s\n", fileName)
-				return ReportObj{}
-			}
-		}
-		// алг - если есть подходящие для обработки файлы-задания,
-		/*
-			обработать их,
-			сформировать отчёт с записью о том, что папка в работе (статус ОЖИДАЕТ)
-			ЗАВЕРШИТЬ выполнение функции, вернуть отчёт
-		*/
-	}
-	sort.Strings(dirEntriesDirNames)
 
-	return ReportObj{}
+	if len(dirEntriesDirNames) > 0 {
+		sort.Strings(dirEntriesDirNames)
+		var statuses, dates []string
+		var childReports []ReportObj
+		var lev int
+		for _, dirName := range dirEntriesDirNames {
+			child := recursiveWalkthrough2(dirName, settings)
+			st := child.status
+			if child.level > lev {
+				lev = child.level
+			}
+			if st == c_ST_OTHER {
+				log.Printf("Требуется участие пользователя: статус %s у папки %s\n", st, dirName)
+				return ReportObj{
+					itemName:  currentPath,
+					level:     lev + 1,
+					dateReady: "",
+					status:    c_ST_OTHER,
+				}
+			}
+			statuses = append(statuses, st)
+			dates = append(dates, child.dateReady)
+			childReports = append(childReports, child)
+		}
+		if hasStringInList(c_ST_PENDING, statuses) {
+			return ReportObj{
+				itemName:   currentPath,
+				level:      lev + 1,
+				dateReady:  "",
+				status:     c_ST_PENDING,
+				innerItems: childReports,
+			}
+		} else {
+			sort.Strings(dates)
+			return ReportObj{
+				itemName:   currentPath,
+				level:      lev + 1,
+				dateReady:  dates[len(dates)-1],
+				status:     c_ST_READY,
+				innerItems: childReports,
+			}
+		}
+	}
+	return ReportObj{
+		itemName:  currentPath,
+		level:     0,
+		dateReady: "",
+		status:    c_ST_OTHER,
+	}
 }
 
-func createReport() ReportObj {
-	return ReportObj{}
+func createPlaylist(filenames []string, currentPath string) {
+	//	взять список файлов, пройти по нему, выполнить операции
+	//			взять полное имя файла и количество экземпляров
+	//			внести в заготовку плейлиста
+	//	записать итоговый плейлист
+
+	//  генерируем содержимое list.xml
+	outputXMLString := getOutputXML(filenames, listOfFileFormats)
+	outputFilePath := filepath.Join(currentPath, listFileName)
+
+	// Записываем list.xml
+	errWrite := os.WriteFile(outputFilePath, []byte(outputXMLString), 0644)
+	if errWrite != nil {
+		log.Printf("Ошибка записи файла %s: %v", outputFilePath, errWrite)
+	} else {
+		log.Printf("Файл %s успешно создан.", outputFilePath)
+	}
 }
 
 func getReadyDate(shortFileName string) string {
-	datePart := getPartFromDividedString(strings.TrimSuffix(shortFileName, filepath.Ext(shortFileName)), prtDATE)
-	return datePart[0:4] + "-" + datePart[4:6] + "-" + datePart[6:]
+	datePart := getPartFromDividedString(strings.TrimSuffix(shortFileName, filepath.Ext(shortFileName)), c_PRT_DATE)
+	if len(datePart) != 8 {
+		return ""
+	} else {
+		return datePart[0:4] + "-" + datePart[4:6] + "-" + datePart[6:]
+	}
 }
 
 func getReportObjectsFromFile(fullFileName string) []ReportObj {
@@ -998,23 +1103,27 @@ func hasStringInSlice(searchFor string, stringSlice []string) bool {
 func countDetails(detailCode string) string {
 	// Ожидаем как минимум 2 части (код_количество)
 	// Если все проверки пройдены, возвращаем извлеченное количество
-	return checkDetailsAmount(getPartFromDividedString(detailCode, prtDETAIL))
+	return checkDetailsAmount(getPartFromDividedString(detailCode, c_PRT_DETAIL))
 }
 
 func getPartFromDividedString(filename string, flag int) string {
 	parts := strings.Split(filename, "_")
 	switch {
-	case flag == prtDETAIL:
-		if len(parts) < prtDETAIL {
+	case flag == c_PRT_DETAIL:
+		if len(parts) < c_PRT_DETAIL {
 			return ""
 		} else {
-			return parts[prtDETAIL-1]
+			return parts[c_PRT_DETAIL-1]
 		}
-	case flag == prtDATE:
+	case flag == c_PRT_DATE:
 		if len(parts) == 0 {
 			return ""
 		} else {
-			return parts[len(parts)-1]
+			if resStr := parts[len(parts)-1]; len(resStr) != 8 {
+				return ""
+			} else {
+				return resStr
+			}
 		}
 	default:
 		return ""
