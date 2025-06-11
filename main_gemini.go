@@ -223,8 +223,8 @@ func main() {
 		return
 	}
 
-	// 2а. Тест структуры отчёта
-	myTTest()
+	// 2а. Тестовая функция - УДАЛИТЬ!
+	myTTest(startDir)
 
 	// 3. Запуск обработки
 	//processSourceDirectory(startDir, settingsStruct) // Передаем определенную startDir и настройки
@@ -234,52 +234,36 @@ func main() {
 	// fmt.Scanln() // Раскомментируйте, если нужно оставлять консоль открытой после выполнения
 }
 
-func getReportXML(itemObj []ReportObj) XReportHead {
-	var result = XReportHead{}
-	for _, entry := range itemObj {
-		result.ReportItemList.ReportItem = append(result.ReportItemList.ReportItem, entry.convertReportItemToXML())
-	}
+func myTTest(path string) {
+	testData := `<Root>
+	<ReportItemList>
+		<ReportItem ItemName="Тест-заказ" Status="Ожидает" DateReady="" Level="1">
+			<ReportItemList>
+				<ReportItem ItemName="ЛДСП Белый Шагрень" Status="Готов" DateReady="2025-06-01" Level="0">
+					<ReportItemList></ReportItemList>
+				</ReportItem>
+				<ReportItem ItemName="ЛДСП Белый ГП" Status="Ожидает" DateReady="" Level="0">
+					<ReportItemList></ReportItemList>
+				</ReportItem>
+			</ReportItemList>
+		</ReportItem>
+	</ReportItemList>
+</Root>`
+	log.Println("--- testData\n" + testData + "\n----")
+	filePath := filepath.Join(path, "test.xml")
+	createFile(filePath, []byte(testData))
 
-	return result
-}
+	log.Println("-- myRepObjects:")
+	myRepObjects := getReportObjectsFromFile(filePath)
+	log.Println(myRepObjects)
 
-func (item *ReportObj) convertReportItemToXML() XReportItem {
-	var result = XReportItem{
-		ItemName:  item.itemName,
-		Level:     item.level,
-		DateReady: item.dateReady,
-		Status:    item.status,
-	}
-	for _, entry := range item.innerItems {
-		result.ReportItemList.ReportItem = append(result.ReportItemList.ReportItem, entry.convertReportItemToXML())
-	}
-	return result
-}
+	log.Println("-- myRepXML:")
+	myRepXML := getReportXML(myRepObjects)
+	log.Println(myRepXML)
 
-func getReportObjects(itemX XReportHead) []ReportObj {
-	var result = []ReportObj{}
-	for _, entry := range itemX.ReportItemList.ReportItem {
-		result = append(result, entry.convertReportItemToObj())
-	}
-	return result
-}
+	filePath2 := filepath.Join(path, "test2.xml")
+	getReportObjects(myRepXML)[0].writeReportToFile(filePath2)
 
-func (item *XReportItem) convertReportItemToObj() ReportObj {
-	var result = ReportObj{
-		itemName:  item.ItemName,
-		level:     item.Level,
-		dateReady: item.DateReady,
-		status:    item.Status,
-	}
-	for _, entry := range item.ReportItemList.ReportItem {
-		result.innerItems = append(result.innerItems, entry.convertReportItemToObj())
-	}
-	return result
-}
-
-func myTTest() {
-	log.Println("----")
-	log.Println(getReadyDate("ready_241205.xml"))
 	log.Println("----")
 	return
 }
@@ -507,7 +491,9 @@ func recursiveWalkthrough2(currentPath string, settings InnerSettings) ReportObj
 			}
 		}
 		// создать плейлист
-		createPlaylist(fullnamesToProceed, currentPath)
+		outputXMLString := getOutputXML(fullnamesToProceed, listOfFileFormats)
+		outputFilePath := filepath.Join(currentPath, listFileName)
+		createFile(outputFilePath, []byte(outputXMLString))
 		//	сформировать отчёт с записью о том, что папка в работе (статус ОЖИДАЕТ)
 		//	ЗАВЕРШИТЬ выполнение функции, вернуть отчёт
 		return ReportObj{
@@ -552,13 +538,17 @@ func recursiveWalkthrough2(currentPath string, settings InnerSettings) ReportObj
 			}
 		} else {
 			sort.Strings(dates)
-			return ReportObj{
+			readyDate := dates[len(dates)-1]
+			resReport := ReportObj{
 				itemName:   currentPath,
 				level:      lev + 1,
-				dateReady:  dates[len(dates)-1],
+				dateReady:  readyDate,
 				status:     c_ST_READY,
 				innerItems: childReports,
 			}
+			fileShortName := "order_ready_" + readyDate[0:4] + readyDate[5:7] + readyDate[8:] + ".xml"
+			resReport.writeReportToFile(filepath.Join(currentPath, fileShortName))
+			return resReport
 		}
 	}
 	return ReportObj{
@@ -566,25 +556,6 @@ func recursiveWalkthrough2(currentPath string, settings InnerSettings) ReportObj
 		level:     0,
 		dateReady: "",
 		status:    c_ST_OTHER,
-	}
-}
-
-func createPlaylist(filenames []string, currentPath string) {
-	//	взять список файлов, пройти по нему, выполнить операции
-	//			взять полное имя файла и количество экземпляров
-	//			внести в заготовку плейлиста
-	//	записать итоговый плейлист
-
-	//  генерируем содержимое list.xml
-	outputXMLString := getOutputXML(filenames, listOfFileFormats)
-	outputFilePath := filepath.Join(currentPath, listFileName)
-
-	// Записываем list.xml
-	errWrite := os.WriteFile(outputFilePath, []byte(outputXMLString), 0644)
-	if errWrite != nil {
-		log.Printf("Ошибка записи файла %s: %v", outputFilePath, errWrite)
-	} else {
-		log.Printf("Файл %s успешно создан.", outputFilePath)
 	}
 }
 
@@ -598,7 +569,77 @@ func getReadyDate(shortFileName string) string {
 }
 
 func getReportObjectsFromFile(fullFileName string) []ReportObj {
-	return []ReportObj{{}}
+	myFileBytes, err := os.ReadFile(fullFileName)
+	if err != nil {
+		log.Printf("Не удалось прочитать файл отчёта %s: %w\n", fullFileName, err)
+		return []ReportObj{{}}
+	}
+	var myRepXML XReportHead
+	err = xml.Unmarshal(myFileBytes, &myRepXML)
+	if err != nil {
+		log.Printf("Не удалось разобрать XML из файла отчёта %s: %w\n", fullFileName, err)
+		return []ReportObj{{}}
+	}
+	return getReportObjects(myRepXML)
+}
+
+func (item *ReportObj) writeReportToFile(fullFilePath string) {
+	var objects []ReportObj
+	objects = append(objects, *item)
+	xmlReport := getReportXML(objects)
+	myHeader := `<?xml version="1.0" encoding="utf-8" ?>` + "\n"
+	xmlReportString := ""
+	xmlReportBytes, errMarshal := xml.MarshalIndent(xmlReport, "", "	") // Используем табуляцию для отступов
+	if errMarshal != nil {
+		log.Printf("Ошибка при сериализации XML: %v", errMarshal)
+		return
+	}
+
+	xmlReportString = myHeader + string(xmlReportBytes)
+	createFile(fullFilePath, []byte(xmlReportString))
+}
+
+func getReportXML(itemObj []ReportObj) XReportHead {
+	var result = XReportHead{}
+	for _, entry := range itemObj {
+		result.ReportItemList.ReportItem = append(result.ReportItemList.ReportItem, entry.convertReportItemToXML())
+	}
+
+	return result
+}
+
+func (item *ReportObj) convertReportItemToXML() XReportItem {
+	var result = XReportItem{
+		ItemName:  item.itemName,
+		Level:     item.level,
+		DateReady: item.dateReady,
+		Status:    item.status,
+	}
+	for _, entry := range item.innerItems {
+		result.ReportItemList.ReportItem = append(result.ReportItemList.ReportItem, entry.convertReportItemToXML())
+	}
+	return result
+}
+
+func getReportObjects(itemX XReportHead) []ReportObj {
+	var result = []ReportObj{}
+	for _, entry := range itemX.ReportItemList.ReportItem {
+		result = append(result, entry.convertReportItemToObj())
+	}
+	return result
+}
+
+func (item *XReportItem) convertReportItemToObj() ReportObj {
+	var result = ReportObj{
+		itemName:  item.ItemName,
+		level:     item.Level,
+		dateReady: item.DateReady,
+		status:    item.Status,
+	}
+	for _, entry := range item.ReportItemList.ReportItem {
+		result.innerItems = append(result.innerItems, entry.convertReportItemToObj())
+	}
+	return result
 }
 
 /**
@@ -689,10 +730,6 @@ func recursiveWalkthrough(currentPath string, settings InnerSettings) {
 // 2) Файл list.xml еще не существует в этой папке
 func shouldCreateListFile(filesToProcess []string, currentDirContentNames []string) bool {
 	return (len(filesToProcess) > 0) && (!hasStringInSlice(listFileName, currentDirContentNames))
-}
-
-func shouldProcessDir(dirsToProcess []string, currentDirContentNames []string) bool {
-	return true
 }
 
 // --- Функции работы с настройками (из первой программы) ---
@@ -841,11 +878,8 @@ func writeDefaultSettingsToFile(fileAbsolutePath string) error {
 	}
 
 	// Записываем файл
-	err := os.WriteFile(fileAbsolutePath, []byte(xmlString), 0644)
-	if err != nil {
-		return fmt.Errorf("не удалось записать файл настроек %s: %w", fileAbsolutePath, err)
-	}
-	return nil
+	err := createFile(fileAbsolutePath, []byte(xmlString))
+	return err
 }
 
 // --- Функции обработки файлов и XML (из второй программы) ---
@@ -875,7 +909,8 @@ func updateFileWithXML(filePath string) {
 	}
 
 	// Перезаписываем файл с обновленным содержимым
-	// Используем OpenFile + Truncate для перезаписи существующего файла
+	createFile(filePath, []byte(myEditedXML))
+	/* Используем OpenFile + Truncate для перезаписи существующего файла
 	myOutputFile, errOpen := os.OpenFile(filePath, os.O_WRONLY|os.O_TRUNC, 0644)
 	if errOpen != nil {
 		log.Printf("Ошибка открытия XML-файла %s для записи: %v", filePath, errOpen)
@@ -889,6 +924,7 @@ func updateFileWithXML(filePath string) {
 	} else {
 		log.Printf("XML-файл %s успешно обновлен.", filePath)
 	}
+	*/
 }
 
 /**
@@ -1033,6 +1069,14 @@ func checkFatal(e error, message string) {
 	if e != nil {
 		log.Fatalf("%s: %v", message, e)
 	}
+}
+
+func createFile(fullFilePath string, data []byte) error {
+	errWrite := os.WriteFile(fullFilePath, data, 0644)
+	if errWrite != nil {
+		log.Printf("Ошибка записи файла %s: %v", fullFilePath, errWrite)
+	}
+	return errWrite
 }
 
 /**
