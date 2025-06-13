@@ -228,6 +228,7 @@ func main() {
 
 	fmt.Printf("Стартовая папка фактическая: %s\n", startDir)
 	fmt.Printf("Выполнение завершено. Затрачено времени: %.6f сек\n", time.Since(tThen).Seconds())
+	fmt.Println("\nДля закрытия окна нажмите Enter")
 	fmt.Scanln() // Раскомментируйте, если нужно оставлять консоль открытой после выполнения
 }
 
@@ -248,7 +249,9 @@ func processSourceDirectory(startDir string, settings InnerSettings) {
 	// Запуск рекурсивного обхода из startDir
 	sort.Strings(stopWords)
 	reports := recursiveWalkthrough(startDir, settings).innerItems
-	createReport(reports, settings)
+	// Сохранение отчёта в файл
+	reportFileFullName := filepath.Join(settings.dirTarget, settings.fileReport)
+	createFile(reportFileFullName, []byte(createReport(reports)))
 }
 
 /**
@@ -258,6 +261,7 @@ func processSourceDirectory(startDir string, settings InnerSettings) {
  */
 func recursiveWalkthrough(currentPath string, settings InnerSettings) ReportObj {
 	// Получаем список содержимого текущей директории
+	currentPathShort := filepath.Base(currentPath)
 	dirEntries, err := os.ReadDir(currentPath)
 	if err != nil {
 		log.Printf("Ошибка чтения директории %s: %v", currentPath, err)
@@ -290,7 +294,7 @@ func recursiveWalkthrough(currentPath string, settings InnerSettings) ReportObj 
 		if hasStringInList(listFileName, dirEntriesFileNames) {
 			//log.Println("Есть файл-список заданий")
 			return ReportObj{
-				itemName:  currentPath,
+				itemName:  currentPathShort,
 				level:     0,
 				dateReady: "",
 				status:    c_ST_PENDING,
@@ -302,7 +306,7 @@ func recursiveWalkthrough(currentPath string, settings InnerSettings) ReportObj 
 				if strings.Contains(filepath.Base(fileName), "fasady") {
 					log.Printf("Путь: %s. Переместите файл ready_fasady.xml в папки с фасадами\n", currentPath)
 					return ReportObj{
-						itemName:  currentPath,
+						itemName:  currentPathShort,
 						level:     0,
 						dateReady: "",
 						status:    c_ST_PENDING,
@@ -312,7 +316,7 @@ func recursiveWalkthrough(currentPath string, settings InnerSettings) ReportObj 
 				if strings.Contains(filepath.Base(fileName), "order") {
 					if dateString := getReadyDate(filepath.Base(fileName)); dateString != "" {
 						return ReportObj{
-							itemName:   currentPath,
+							itemName:   currentPathShort,
 							level:      0,
 							dateReady:  dateString,
 							status:     c_ST_READY,
@@ -321,7 +325,7 @@ func recursiveWalkthrough(currentPath string, settings InnerSettings) ReportObj 
 					} else {
 						log.Printf("Ошибка извлечения даты из имени файла %s\n", fileName)
 						return ReportObj{
-							itemName:   currentPath,
+							itemName:   currentPathShort,
 							level:      0,
 							dateReady:  dateString,
 							status:     c_ST_PENDING,
@@ -332,7 +336,7 @@ func recursiveWalkthrough(currentPath string, settings InnerSettings) ReportObj 
 				// алг - если есть выполненный файл "плейлист" (ready_yyyymmdd.xml),
 				if dateString := getReadyDate(filepath.Base(fileName)); dateString != "" {
 					return ReportObj{
-						itemName:  currentPath,
+						itemName:  currentPathShort,
 						level:     0,
 						dateReady: dateString,
 						status:    c_ST_READY,
@@ -340,7 +344,7 @@ func recursiveWalkthrough(currentPath string, settings InnerSettings) ReportObj 
 				} else {
 					log.Printf("Ошибка извлечения даты из имени файла %s\n", fileName)
 					return ReportObj{
-						itemName:  currentPath,
+						itemName:  currentPathShort,
 						level:     0,
 						dateReady: dateString,
 						status:    c_ST_PENDING,
@@ -370,7 +374,7 @@ func recursiveWalkthrough(currentPath string, settings InnerSettings) ReportObj 
 			//	сформировать отчёт с записью о том, что папка в работе (статус ОЖИДАЕТ)
 			//	ЗАВЕРШИТЬ выполнение функции, вернуть отчёт
 			return ReportObj{
-				itemName:  currentPath,
+				itemName:  currentPathShort,
 				level:     0,
 				dateReady: "",
 				status:    c_ST_PENDING,
@@ -392,7 +396,7 @@ func recursiveWalkthrough(currentPath string, settings InnerSettings) ReportObj 
 			if st == c_ST_OTHER {
 				log.Printf("Требуется участие пользователя: статус %s у папки %s\n", st, dirName)
 				return ReportObj{
-					itemName:  currentPath,
+					itemName:  currentPathShort,
 					level:     lev + 1,
 					dateReady: "",
 					status:    c_ST_OTHER,
@@ -404,7 +408,7 @@ func recursiveWalkthrough(currentPath string, settings InnerSettings) ReportObj 
 		}
 		if hasStringInList(c_ST_PENDING, statuses) {
 			return ReportObj{
-				itemName:   currentPath,
+				itemName:   currentPathShort,
 				level:      lev + 1,
 				dateReady:  "",
 				status:     c_ST_PENDING,
@@ -414,7 +418,7 @@ func recursiveWalkthrough(currentPath string, settings InnerSettings) ReportObj 
 			sort.Strings(dates)
 			readyDate := dates[len(dates)-1]
 			resReport := ReportObj{
-				itemName:   currentPath,
+				itemName:   currentPathShort,
 				level:      lev + 1,
 				dateReady:  readyDate,
 				status:     c_ST_READY,
@@ -426,7 +430,7 @@ func recursiveWalkthrough(currentPath string, settings InnerSettings) ReportObj 
 		}
 	}
 	return ReportObj{
-		itemName:  currentPath,
+		itemName:  currentPathShort,
 		level:     0,
 		dateReady: "",
 		status:    c_ST_OTHER,
@@ -674,31 +678,32 @@ func updateFileWithXML(filePath string) {
 	}
 
 	// Получаем обновленное содержимое XML
-	myEditedXML, errUpdate := getUpdatedXML(myFileBytes)
+	myEditedXML, xmlUpdated, errUpdate := getUpdatedXML(myFileBytes)
 	if errUpdate != nil {
 		// Ошибка уже залогирована внутри getUpdatedXML
 		return
 	}
 
 	// Перезаписываем файл с обновленным содержимым
-	createFile(filePath, []byte(myEditedXML))
+	if xmlUpdated {
+		createFile(filePath, []byte(myEditedXML))
+	}
 }
 
 /**
  * getUpdatedXML: Разбирает XML байты, обновляет поле Name у панелей и возвращает обновленный XML в виде строки.
  * @param inXMLBytes - Содержимое XML-файла в виде байтов.
  * @return string - Обновленное XML-содержимое в виде строки (с заголовком).
+ * @return bool - true, если строка обновлена.
  * @return error - Ошибка при разборе или сериализации XML.
  */
-func getUpdatedXML(inXMLBytes []byte) (string, error) {
+func getUpdatedXML(inXMLBytes []byte) (string, bool, error) {
 	var root XResult
-	myHeader := `<?xml version="1.0" encoding="utf-8" ?>` + "\n"
-	updatedXML := ""
 
 	err := xml.Unmarshal(inXMLBytes, &root)
 	if err != nil {
 		log.Printf("Ошибка при разборе XML для обновления: %v", err)
-		return "", err // Возвращаем ошибку
+		return "", false, err // Возвращаем ошибку
 	}
 
 	// Обновляем поле Name для каждой панели
@@ -724,19 +729,21 @@ func getUpdatedXML(inXMLBytes []byte) (string, error) {
 
 	if !updated {
 		//log.Println("Обновление XML не требуется, имена панелей уже соответствуют формату Длина_Ширина_Толщина.")
-		// Возвращаем исходные байты с заголовком, чтобы избежать лишней сериализации
-		return myHeader + string(inXMLBytes), nil
+		// Возвращаем пустую строку, чтобы избежать лишней сериализации
+		return "", false, nil
 	}
 
 	// Сериализуем обновленную структуру обратно в XML
 	updatedXMLBytes, errMarshal := xml.MarshalIndent(root, "", "	") // Используем табуляцию для отступов
 	if errMarshal != nil {
 		log.Printf("Ошибка при сериализации обновленного XML: %v", errMarshal)
-		return "", errMarshal // Возвращаем ошибку
+		return "", false, errMarshal // Возвращаем ошибку
 	}
 
+	myHeader := `<?xml version="1.0" encoding="utf-8" ?>` + "\n"
+	updatedXML := ""
 	updatedXML = myHeader + string(updatedXMLBytes)
-	return updatedXML, nil
+	return updatedXML, true, nil
 }
 
 /**
@@ -815,13 +822,21 @@ func getXMLProcessList(myPathList []string) string {
 	return sb.String()
 }
 
-func createReport(reports []ReportObj, settings InnerSettings) {
-	reportFileFullName := filepath.Join(settings.dirTarget, settings.fileReport)
-	var sb strings.Builder
-	for _, el := range reports {
-		sb.WriteString(el.dateReady + " - " + el.itemName + "\n")
+func createReport(reports []ReportObj) string {
+	var reportStrings []string
+	for _, rep := range reports {
+		dateMonth := ""
+		if rep.dateReady != "" {
+			dateMonth = rep.dateReady[0:7]
+		}
+		reportStrings = append(reportStrings, dateMonth+" - "+rep.itemName+"\n")
 	}
-	createFile(reportFileFullName, []byte(sb.String()))
+	sort.Strings(reportStrings)
+	var sb strings.Builder
+	for _, rs := range reportStrings {
+		sb.WriteString(rs)
+	}
+	return sb.String()
 }
 
 // --- Вспомогательные функции
