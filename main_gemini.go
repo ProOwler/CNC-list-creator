@@ -674,31 +674,32 @@ func updateFileWithXML(filePath string) {
 	}
 
 	// Получаем обновленное содержимое XML
-	myEditedXML, errUpdate := getUpdatedXML(myFileBytes)
+	myEditedXML, xmlUpdated, errUpdate := getUpdatedXML(myFileBytes)
 	if errUpdate != nil {
 		// Ошибка уже залогирована внутри getUpdatedXML
 		return
 	}
 
 	// Перезаписываем файл с обновленным содержимым
-	createFile(filePath, []byte(myEditedXML))
+	if xmlUpdated {
+		createFile(filePath, []byte(myEditedXML))
+	}
 }
 
 /**
  * getUpdatedXML: Разбирает XML байты, обновляет поле Name у панелей и возвращает обновленный XML в виде строки.
  * @param inXMLBytes - Содержимое XML-файла в виде байтов.
  * @return string - Обновленное XML-содержимое в виде строки (с заголовком).
+ * @return bool - true, если строка обновлена.
  * @return error - Ошибка при разборе или сериализации XML.
  */
-func getUpdatedXML(inXMLBytes []byte) (string, error) {
+func getUpdatedXML(inXMLBytes []byte) (string, bool, error) {
 	var root XResult
-	myHeader := `<?xml version="1.0" encoding="utf-8" ?>` + "\n"
-	updatedXML := ""
 
 	err := xml.Unmarshal(inXMLBytes, &root)
 	if err != nil {
 		log.Printf("Ошибка при разборе XML для обновления: %v", err)
-		return "", err // Возвращаем ошибку
+		return "", false, err // Возвращаем ошибку
 	}
 
 	// Обновляем поле Name для каждой панели
@@ -724,19 +725,21 @@ func getUpdatedXML(inXMLBytes []byte) (string, error) {
 
 	if !updated {
 		//log.Println("Обновление XML не требуется, имена панелей уже соответствуют формату Длина_Ширина_Толщина.")
-		// Возвращаем исходные байты с заголовком, чтобы избежать лишней сериализации
-		return myHeader + string(inXMLBytes), nil
+		// Возвращаем пустую строку, чтобы избежать лишней сериализации
+		return "", false, nil
 	}
 
 	// Сериализуем обновленную структуру обратно в XML
 	updatedXMLBytes, errMarshal := xml.MarshalIndent(root, "", "	") // Используем табуляцию для отступов
 	if errMarshal != nil {
 		log.Printf("Ошибка при сериализации обновленного XML: %v", errMarshal)
-		return "", errMarshal // Возвращаем ошибку
+		return "", false, errMarshal // Возвращаем ошибку
 	}
 
+	myHeader := `<?xml version="1.0" encoding="utf-8" ?>` + "\n"
+	updatedXML := ""
 	updatedXML = myHeader + string(updatedXMLBytes)
-	return updatedXML, nil
+	return updatedXML, true, nil
 }
 
 /**
