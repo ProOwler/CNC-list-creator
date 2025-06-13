@@ -249,7 +249,9 @@ func processSourceDirectory(startDir string, settings InnerSettings) {
 	// Запуск рекурсивного обхода из startDir
 	sort.Strings(stopWords)
 	reports := recursiveWalkthrough(startDir, settings).innerItems
-	createReport(reports, settings)
+	// Сохранение отчёта в файл
+	reportFileFullName := filepath.Join(settings.dirTarget, settings.fileReport)
+	createFile(reportFileFullName, []byte(createReport(reports)))
 }
 
 /**
@@ -819,13 +821,17 @@ func getXMLProcessList(myPathList []string) string {
 	return sb.String()
 }
 
-func createReport(reports []ReportObj, settings InnerSettings) {
-	reportFileFullName := filepath.Join(settings.dirTarget, settings.fileReport)
-	var sb strings.Builder
-	for _, el := range reports {
-		sb.WriteString(el.dateReady + " - " + el.itemName + "\n")
+func createReport(reports []ReportObj) string {
+	var reportStrings []string
+	for _, rep := range reports {
+		reportStrings = append(reportStrings, rep.dateReady+" - "+rep.itemName+"\n")
 	}
-	createFile(reportFileFullName, []byte(sb.String()))
+	sort.Strings(reportStrings)
+	var sb strings.Builder
+	for _, rs := range reportStrings {
+		sb.WriteString(rs)
+	}
+	return sb.String()
 }
 
 // --- Вспомогательные функции
