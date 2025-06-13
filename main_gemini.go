@@ -261,6 +261,7 @@ func processSourceDirectory(startDir string, settings InnerSettings) {
  */
 func recursiveWalkthrough(currentPath string, settings InnerSettings) ReportObj {
 	// Получаем список содержимого текущей директории
+	currentPathShort := filepath.Base(currentPath)
 	dirEntries, err := os.ReadDir(currentPath)
 	if err != nil {
 		log.Printf("Ошибка чтения директории %s: %v", currentPath, err)
@@ -293,7 +294,7 @@ func recursiveWalkthrough(currentPath string, settings InnerSettings) ReportObj 
 		if hasStringInList(listFileName, dirEntriesFileNames) {
 			//log.Println("Есть файл-список заданий")
 			return ReportObj{
-				itemName:  currentPath,
+				itemName:  currentPathShort,
 				level:     0,
 				dateReady: "",
 				status:    c_ST_PENDING,
@@ -305,7 +306,7 @@ func recursiveWalkthrough(currentPath string, settings InnerSettings) ReportObj 
 				if strings.Contains(filepath.Base(fileName), "fasady") {
 					log.Printf("Путь: %s. Переместите файл ready_fasady.xml в папки с фасадами\n", currentPath)
 					return ReportObj{
-						itemName:  currentPath,
+						itemName:  currentPathShort,
 						level:     0,
 						dateReady: "",
 						status:    c_ST_PENDING,
@@ -315,7 +316,7 @@ func recursiveWalkthrough(currentPath string, settings InnerSettings) ReportObj 
 				if strings.Contains(filepath.Base(fileName), "order") {
 					if dateString := getReadyDate(filepath.Base(fileName)); dateString != "" {
 						return ReportObj{
-							itemName:   currentPath,
+							itemName:   currentPathShort,
 							level:      0,
 							dateReady:  dateString,
 							status:     c_ST_READY,
@@ -324,7 +325,7 @@ func recursiveWalkthrough(currentPath string, settings InnerSettings) ReportObj 
 					} else {
 						log.Printf("Ошибка извлечения даты из имени файла %s\n", fileName)
 						return ReportObj{
-							itemName:   currentPath,
+							itemName:   currentPathShort,
 							level:      0,
 							dateReady:  dateString,
 							status:     c_ST_PENDING,
@@ -335,7 +336,7 @@ func recursiveWalkthrough(currentPath string, settings InnerSettings) ReportObj 
 				// алг - если есть выполненный файл "плейлист" (ready_yyyymmdd.xml),
 				if dateString := getReadyDate(filepath.Base(fileName)); dateString != "" {
 					return ReportObj{
-						itemName:  currentPath,
+						itemName:  currentPathShort,
 						level:     0,
 						dateReady: dateString,
 						status:    c_ST_READY,
@@ -343,7 +344,7 @@ func recursiveWalkthrough(currentPath string, settings InnerSettings) ReportObj 
 				} else {
 					log.Printf("Ошибка извлечения даты из имени файла %s\n", fileName)
 					return ReportObj{
-						itemName:  currentPath,
+						itemName:  currentPathShort,
 						level:     0,
 						dateReady: dateString,
 						status:    c_ST_PENDING,
@@ -373,7 +374,7 @@ func recursiveWalkthrough(currentPath string, settings InnerSettings) ReportObj 
 			//	сформировать отчёт с записью о том, что папка в работе (статус ОЖИДАЕТ)
 			//	ЗАВЕРШИТЬ выполнение функции, вернуть отчёт
 			return ReportObj{
-				itemName:  currentPath,
+				itemName:  currentPathShort,
 				level:     0,
 				dateReady: "",
 				status:    c_ST_PENDING,
@@ -395,7 +396,7 @@ func recursiveWalkthrough(currentPath string, settings InnerSettings) ReportObj 
 			if st == c_ST_OTHER {
 				log.Printf("Требуется участие пользователя: статус %s у папки %s\n", st, dirName)
 				return ReportObj{
-					itemName:  currentPath,
+					itemName:  currentPathShort,
 					level:     lev + 1,
 					dateReady: "",
 					status:    c_ST_OTHER,
@@ -407,7 +408,7 @@ func recursiveWalkthrough(currentPath string, settings InnerSettings) ReportObj 
 		}
 		if hasStringInList(c_ST_PENDING, statuses) {
 			return ReportObj{
-				itemName:   currentPath,
+				itemName:   currentPathShort,
 				level:      lev + 1,
 				dateReady:  "",
 				status:     c_ST_PENDING,
@@ -417,7 +418,7 @@ func recursiveWalkthrough(currentPath string, settings InnerSettings) ReportObj 
 			sort.Strings(dates)
 			readyDate := dates[len(dates)-1]
 			resReport := ReportObj{
-				itemName:   currentPath,
+				itemName:   currentPathShort,
 				level:      lev + 1,
 				dateReady:  readyDate,
 				status:     c_ST_READY,
@@ -429,7 +430,7 @@ func recursiveWalkthrough(currentPath string, settings InnerSettings) ReportObj 
 		}
 	}
 	return ReportObj{
-		itemName:  currentPath,
+		itemName:  currentPathShort,
 		level:     0,
 		dateReady: "",
 		status:    c_ST_OTHER,
@@ -824,7 +825,11 @@ func getXMLProcessList(myPathList []string) string {
 func createReport(reports []ReportObj) string {
 	var reportStrings []string
 	for _, rep := range reports {
-		reportStrings = append(reportStrings, rep.dateReady+" - "+rep.itemName+"\n")
+		dateMonth := ""
+		if rep.dateReady != "" {
+			dateMonth = rep.dateReady[0:7]
+		}
+		reportStrings = append(reportStrings, dateMonth+" - "+rep.itemName+"\n")
 	}
 	sort.Strings(reportStrings)
 	var sb strings.Builder
