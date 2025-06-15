@@ -315,12 +315,19 @@ func recursiveWalkthrough(currentPath string, settings InnerSettings) ReportObj 
 				// алг - если есть файл-метка-отчёт order_ready_yyyymmdd.xml,
 				if strings.Contains(filepath.Base(fileName), "order") {
 					if dateString := getReadyDate(filepath.Base(fileName)); dateString != "" {
+						innerObjects := getReportObjectsFromFile(fileName)
+						lvl := 0
+						for _, rep := range innerObjects {
+							if rep.level >= lvl {
+								lvl = rep.level + 1
+							}
+						}
 						return ReportObj{
 							itemName:   currentPathShort,
-							level:      0,
+							level:      lvl,
 							dateReady:  dateString,
 							status:     c_ST_READY,
-							innerItems: getReportObjectsFromFile(fileName),
+							innerItems: innerObjects,
 						}
 					} else {
 						log.Printf("Ошибка извлечения даты из имени файла %s\n", fileName)
