@@ -163,6 +163,7 @@ const (
 const (
 	c_PRT_DETAIL int = 2
 	c_PRT_DATE   int = -1
+	c_PRT_ID     int = 10
 )
 
 // константы, как обрабатывать файлы в папке
@@ -227,7 +228,7 @@ func main() {
 	processSourceDirectory(startDir, settingsStruct) // Передаем определенную startDir и настройки
 
 	fmt.Printf("Стартовая папка фактическая: %s\n", startDir)
-	fmt.Printf("Выполнение завершено. Затрачено времени: %.6f сек\n", time.Since(tThen).Seconds())
+	fmt.Printf("\nВыполнение завершено. Затрачено времени: %.6f сек\n", time.Since(tThen).Seconds())
 	fmt.Println("\nДля закрытия окна нажмите Enter")
 	fmt.Scanln() // Раскомментируйте, если нужно оставлять консоль открытой после выполнения
 }
@@ -240,7 +241,7 @@ func main() {
  * @param settings - Загруженные настройки программы (для доступа к списку игнорирования).
  */
 func processSourceDirectory(startDir string, settings InnerSettings) {
-	log.Printf("Начало обработки папки: %s", startDir)
+	log.Printf("\n\nНачало обработки папки: %s", startDir)
 
 	// Определение форматов файлов для обработки (из второй программы)
 	listOfFileFormats["7"] = "mpr"  // Код "7" для файлов .mpr
@@ -390,7 +391,7 @@ func recursiveWalkthrough(currentPath string, settings InnerSettings) ReportObj 
 		}
 		// создать плейлист
 		if len(fullnamesToProceed) > 0 {
-			outputXMLString := getOutputXML(fullnamesToProceed, listOfFileFormats)
+			outputXMLString := getOutputXML(sortFullnames(fullnamesToProceed), listOfFileFormats)
 			outputFilePath := filepath.Join(currentPath, listFileName)
 			createFile(outputFilePath, []byte(outputXMLString))
 			//	сформировать отчёт с записью о том, что папка в работе (статус ОЖИДАЕТ)
@@ -457,6 +458,46 @@ func recursiveWalkthrough(currentPath string, settings InnerSettings) ReportObj 
 		dateReady: "",
 		status:    c_ST_OTHER,
 	}
+}
+
+/**
+ * sortFullnames: Сортирует имена файлов помодульно:
+ *  разбивает имя файла на части по "_", для дальнейшей сортировки использует только первую часть
+ *  получившееся разбивает по ".", у каждого получившегося куска использует только численное значение, нули ("0") в старших разрядах не учитываются
+ * @param unorderedFilelist - Список имён файлов, подлежащий сортировке
+ * @return - Пересортированный список
+ */
+func sortFullnames(unorderedFilelist []string) []string {
+	/*
+		strings.FieldsFunc()
+		strings.Split()
+	*/
+	var tempList, resList []string
+	var tempMap = make(myMap)
+	isSep := func(c rune) bool {
+		return c == '.'
+	}
+	dir := filepath.Dir(unorderedFilelist[0])
+	//log.Println(dir)
+	for _, el := range unorderedFilelist {
+		name := filepath.Base(el)
+		aydee := getPartFromDividedString(name, c_PRT_ID)
+		nmbr := "1"
+		nmbrStrings := strings.FieldsFunc(aydee, isSep)
+		for _, elem := range nmbrStrings {
+			if n, err := strconv.Atoi(elem); err == nil {
+				thsnd := strconv.Itoa(n + 1000)
+				nmbr = nmbr + thsnd[1:]
+			}
+		}
+		tempMap[nmbr] = name
+		tempList = append(tempList, nmbr)
+	}
+	sort.Strings(tempList)
+	for _, name := range tempList {
+		resList = append(resList, filepath.Join(dir, tempMap[name]))
+	}
+	return resList
 }
 
 func getReadyDate(shortFileName string) string {
@@ -998,6 +1039,8 @@ func getPartFromDividedString(filename string, flag int) string {
 				return resStr
 			}
 		}
+	case flag == c_PRT_ID:
+		return parts[0]
 	default:
 		return ""
 	}
