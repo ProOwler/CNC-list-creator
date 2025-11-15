@@ -1,0 +1,114 @@
+digraph CallOrder {
+	fontname=Helvetica;
+	splines=curved;
+	splines=true;
+	ratio=fill;
+	rankdir=LR;
+	mindist=100;
+	minlen=150;
+	overlap=prism;		
+
+"mainFunc" [style=filled shape=box]
+
+subgraph clusterMain1{
+		label="Main"
+		bgcolor="white"
+
+"processSourceDirectory" [style=filled shape=box]
+"recursiveWalkthrough" [style=filled shape=box]
+"sortFullnames" [style=filled shape=box]
+"getReadyDate" [style=filled shape=box]
+"countDetails" [style=filled shape=box]
+"getPartFromDividedString" [style=filled shape=box]
+"hasStopWord" [style=filled shape=box]
+"checkDetailsAmount" [style=filled shape=box]
+"getOutputXML" [style=filled shape=box]
+"getXMLFileList" [style=filled shape=box]
+"getXMLProcessList" [style=filled shape=box]
+"getFiletypeCode" [style=filled shape=box]
+"updateFileWithXML" [style=filled shape=box]
+"getUpdatedXML" [style=filled shape=box]
+
+}
+
+subgraph clusterAux2{
+		label="Второстепенное"
+		bgcolor="grey"
+
+"isValidDir" [style=filled shape=box]
+"hasStringInList" [style=filled shape=box]
+"checkFatal" [style=filled shape=box]
+"createFile" [style=filled shape=box]
+"getAbsoluteFilepath" [style=filled shape=box]
+"getExtention" [style=filled shape=box]
+
+}
+
+subgraph clusterReports3{
+		label="Reports"
+		bgcolor="olive"
+
+"createReport" [style=filled shape=box]
+"getReportObjectsFromFile" [style=filled shape=box]
+"getReportObjects" [style=filled shape=box]
+"convertReportItemToObj" [style=filled shape=box]
+"writeReportToFile" [style=filled shape=box]
+"getReportXML" [style=filled shape=box]
+"convertReportItemToXML" [style=filled shape=box]
+
+}
+
+subgraph clusterSettings4{
+		label="Settings"
+		bgcolor="olive"
+
+"initSettings" [style=filled shape=box]
+"writeDefaultSettingsToFile" [style=filled shape=box]
+"readFromFile" [style=filled shape=box]
+"isIgnored" [style=filled shape=box]
+
+}
+
+//--
+
+"mainFunc" -> { "initSettings", "checkFatal", "writeDefaultSettingsToFile", "getAbsoluteFilepath", "processSourceDirectory"}
+
+"processSourceDirectory" -> { "recursiveWalkthrough", "createFile", "createReport", "isValidDir"}
+
+"recursiveWalkthrough" -> { "hasStringInList", "getReadyDate", "getReportObjectsFromFile", "hasStopWord", "updateFileWithXML", "getOutputXML", "sortFullnames", "createFile", "recursiveWalkthrough", "writeReportToFile", "isIgnored"}
+
+"sortFullnames" -> { "getPartFromDividedString"}
+
+"getReadyDate" -> { "getPartFromDividedString"}
+
+"getReportObjectsFromFile" -> { "getReportObjects"}
+
+"writeReportToFile" -> { "getReportXML", "createFile"}
+
+"getReportXML" -> { "convertReportItemToXML"}
+
+"convertReportItemToXML" -> { "convertReportItemToXML"}
+
+"getReportObjects" -> { "convertReportItemToObj"}
+
+"convertReportItemToObj" -> { "convertReportItemToObj"}
+
+"initSettings" -> { "getAbsoluteFilepath", "readFromFile"}
+
+"readFromFile" -> { "getAbsoluteFilepath"}
+
+"isIgnored" -> { "isValidDir", "hasStringInList"}
+
+"writeDefaultSettingsToFile" -> { "createFile"}
+
+"updateFileWithXML" -> { "getUpdatedXML", "createFile"}
+
+"getOutputXML" -> { "getXMLFileList", "getXMLProcessList"}
+
+"getXMLFileList" -> { "getFiletypeCode", "getExtention"}
+
+"getXMLProcessList" -> { "countDetails"}
+
+"countDetails" -> { "checkDetailsAmount", "getPartFromDividedString"}
+
+}
