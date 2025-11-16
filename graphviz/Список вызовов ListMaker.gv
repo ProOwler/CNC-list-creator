@@ -29,6 +29,11 @@ subgraph clusterMain1{
 "updateFileWithXML" [style=filled shape=box]
 "getUpdatedXML" [style=filled shape=box]
 
+"initSettings" [style=filled shape=box]
+"writeDefaultSettingsToFile" [style=filled shape=box]
+"readFromFile" [style=filled shape=box]
+"isIgnored" [style=filled shape=box]
+
 }
 
 subgraph clusterAux2{
@@ -44,6 +49,12 @@ subgraph clusterAux2{
 
 }
 
+subgraph clusterSettings4{
+		label="Settings"
+		bgcolor="olive"
+
+}
+
 subgraph clusterReports3{
 		label="Reports"
 		bgcolor="olive"
@@ -55,17 +66,6 @@ subgraph clusterReports3{
 "writeReportToFile" [style=filled shape=box]
 "getReportXML" [style=filled shape=box]
 "convertReportItemToXML" [style=filled shape=box]
-
-}
-
-subgraph clusterSettings4{
-		label="Settings"
-		bgcolor="olive"
-
-"initSettings" [style=filled shape=box]
-"writeDefaultSettingsToFile" [style=filled shape=box]
-"readFromFile" [style=filled shape=box]
-"isIgnored" [style=filled shape=box]
 
 }
 
