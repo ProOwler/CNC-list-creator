@@ -1,0 +1,35 @@
+Структуры и шаблоны
+---
+
+XML Отчёт о выполнении заказа:
+
+<Root>
+	<ReportItemList>
+		<ReportItem ItemName="Тест-заказ" Status="Ожидает" DateReady="" Level="1">
+			<ReportItemList>
+				<ReportItem ItemName="ЛДСП Белый Шагрень" Status="Готов" DateReady="2025-06-01" Level="0">
+					<ReportItemList></ReportItemList>
+				</ReportItem>
+				<ReportItem ItemName="ЛДСП Белый ГП" Status="Ожидает" DateReady="" Level="0">
+					<ReportItemList></ReportItemList>
+				</ReportItem>
+			</ReportItemList>
+		</ReportItem>
+	</ReportItemList>
+</Root>
+
+---
+
+Шаблон отчёта
+// массив объектов, в объекте массив проектов, в проекте массив раскроев
+// на каждом уровне статус и дата выполнения
+// статусы: ожидает / готов / иное
+	[{
+		"item_name" : string,
+		"status" : string,
+		"date_ready" : date,
+		"level" : int,
+		"inner_items" : [{ "item_name", "status", "date_ready", "level", "inner_items" }, ... ]
+	}, ... ]
+
+---
