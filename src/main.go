@@ -2,9 +2,7 @@ package main
 
 import (
 	"encoding/xml"
-	//	"errors"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -80,64 +78,6 @@ type XPanel struct {
 	EdgeGroup      string `xml:",innerxml"`
 }
 
-// XML-представление отчёта
-type XReportHead struct {
-	XMLName        xml.Name        `xml:"Root"`
-	ReportItemList XReportItemList `xml:"ReportItemList"`
-}
-
-type XReportItemList struct {
-	ReportItem []XReportItem `xml:"ReportItem"`
-}
-
-type XReportItem struct {
-	ItemName       string          `xml:"ItemName,attr"`
-	Status         string          `xml:"Status,attr"`
-	DateReady      string          `xml:"DateReady,attr"`
-	Level          int             `xml:"Level,attr"`
-	ReportItemList XReportItemList `xml:"ReportItemList,omitempty"`
-}
-
-/*
-<Root>
-	<ReportItemList>
-		<ReportItem ItemName="Тест-заказ" Status="Ожидает" DateReady="" Level="1">
-			<ReportItemList>
-				<ReportItem ItemName="ЛДСП Белый Шагрень" Status="Готов" DateReady="2025-06-01" Level="0">
-					<ReportItemList></ReportItemList>
-				</ReportItem>
-				<ReportItem ItemName="ЛДСП Белый ГП" Status="Ожидает" DateReady="" Level="0">
-					<ReportItemList></ReportItemList>
-				</ReportItem>
-			</ReportItemList>
-		</ReportItem>
-	</ReportItemList>
-</Root>
-*/
-
-// GO-представление отчёта
-type ReportObj struct {
-	itemName   string
-	status     string
-	dateReady  string
-	level      int
-	innerItems []ReportObj
-}
-
-/*
-Шаблон отчёта
-// массив объектов, в объекте массив проектов, в проекте массив раскроев
-// на каждом уровне статус и дата выполнения
-// статусы: ожидает / готов / иное
-	[{
-		"item_name" : string,
-		"status" : string,
-		"date_ready" : date,
-		"level" : int,
-		"inner_items" : [{ "item_name", "status", "date_ready", "level", "inner_items" }, ... ]
-	}, ... ]
-*/
-
 // myMap: Пользовательский тип для хранения сопоставлений (например, кодов и расширений файлов)
 type myMap map[string]string
 
@@ -187,21 +127,19 @@ var listOfFileFormats = make(myMap)
  */
 func main() {
 	tThen := time.Now()
-	//log.Println("Запуск программы...")
-	//log.Println(os.Args[1])
 
 	// 1. Загрузка настроек (нужны для IgnoreList и др.)
 	settingsStruct, err := initSettings(settingsFileName)
 	if err != nil {
-		log.Printf("Ошибка чтения настроек (%s): %v. Создание файла настроек по умолчанию.\n", settingsFileName, err)
+		fmt.Printf("Ошибка чтения настроек (%s): %v. Создание файла настроек по умолчанию.\n", settingsFileName, err)
 		checkFatal(writeDefaultSettingsToFile(settingsFileName), "Не удалось создать файл настроек по умолчанию\n")
-		log.Printf("Файл настроек по умолчанию '%s' создан. Пожалуйста, отредактируйте его и перезапустите программу.\n", settingsFileName)
+		fmt.Printf("Файл настроек по умолчанию '%s' создан. Пожалуйста, отредактируйте его и перезапустите программу.\n", settingsFileName)
 		// Выход, так как без базовых настроек (особенно IgnoreList) работа некорректна
 		fmt.Scanln()
 		return
 	} else {
-		log.Printf("Настройки успешно загружены из %s.", settingsFileName)
-		log.Printf("Игнорируемые папки: %v", settingsStruct.ignoreList)
+		fmt.Printf("Настройки успешно загружены из %s.\n", settingsFileName)
+		fmt.Printf("Игнорируемые папки: %v\n", settingsStruct.ignoreList)
 	}
 
 	// 2. Определение стартовой директории
@@ -211,26 +149,27 @@ func main() {
 		progDir := filepath.Dir(os.Args[0]) // Директория, откуда запущена программа
 		// Используем аргумент командной строки
 		startDir = getAbsoluteFilepath(progDir, os.Args[1]) // Делаем путь абсолютным относительно папки программы
-		//log.Printf("Используется стартовая папка из аргумента командной строки: %s", startDir)
+		//fmt.Printf("Используется стартовая папка из аргумента командной строки: %s", startDir)
 	} else {
 		// Используем папку из настроек
 		startDir = settingsStruct.dirSource // Путь уже абсолютный после initSettings
-		// log.Printf("Аргумент командной строки не найден. Используется стартовая папка из настроек: %s", startDir)
+		// fmt.Printf("Аргумент командной строки не найден. Используется стартовая папка из настроек: %s", startDir)
 	}
 
 	// Проверка, что startDir не пустая (на всякий случай)
 	if startDir == "" {
-		log.Println("Ошибка: Стартовая директория не определена (ни через аргумент, ни в настройках).")
+		fmt.Println("Ошибка: Стартовая директория не определена (ни через аргумент, ни в настройках).")
 		return
 	}
 
 	// 3. Запуск обработки
+	sort.Strings(stopWords)
 	processSourceDirectory(startDir, settingsStruct) // Передаем определенную startDir и настройки
 
-	fmt.Printf("Стартовая папка фактическая: %s\n", startDir)
+	fmt.Printf("\nСтартовая папка фактическая: %s\n", startDir)
 	fmt.Printf("\nВыполнение завершено. Затрачено времени: %.6f сек\n", time.Since(tThen).Seconds())
 	fmt.Println("\nДля закрытия окна нажмите Enter")
-	fmt.Scanln() // Раскомментируйте, если нужно оставлять консоль открытой после выполнения
+	fmt.Scanln()
 }
 
 // --- Функции обработки ---
@@ -241,14 +180,13 @@ func main() {
  * @param settings - Загруженные настройки программы (для доступа к списку игнорирования).
  */
 func processSourceDirectory(startDir string, settings InnerSettings) {
-	log.Printf("\n\nНачало обработки папки: %s", startDir)
+	fmt.Printf("\n\nНачало обработки папки: %s\n", startDir)
 
-	// Определение форматов файлов для обработки (из второй программы)
+	// Определение форматов файлов для обработки
 	listOfFileFormats["7"] = "mpr"  // Код "7" для файлов .mpr
 	listOfFileFormats["11"] = "xml" // Код "11" для файлов .xml
 
 	// Запуск рекурсивного обхода из startDir
-	sort.Strings(stopWords)
 	reports := recursiveWalkthrough(startDir, settings).innerItems
 	// Сохранение отчёта в файл
 	validTimeName := strings.ReplaceAll(time.Now().Format(time.DateTime), ":", "-")
@@ -262,14 +200,14 @@ func processSourceDirectory(startDir string, settings InnerSettings) {
 			if !isValidDir(dateDirFull) {
 				os.MkdirAll(dateDirFull, 0777)
 				if !isValidDir(dateDirFull) {
-					log.Printf("Папка %s всё ещё недоступна", dateDirFull)
+					fmt.Printf("Папка %s всё ещё недоступна", dateDirFull)
 				}
 			}
 			err0 := os.Rename(
 				filepath.Join(startDir, proj.itemName),
 				filepath.Join(dateDirFull, proj.itemName))
 			if err0 != nil {
-				log.Printf("Ошибка перемещения директории %s: %v\n\nЗакройте окно Проводника!\n", proj.itemName, err0)
+				fmt.Printf("Ошибка перемещения директории %s: %v\n\nЗакройте окно Проводника!\n", proj.itemName, err0)
 			}
 		}
 	}
@@ -285,7 +223,7 @@ func recursiveWalkthrough(currentPath string, settings InnerSettings) ReportObj 
 	currentPathShort := filepath.Base(currentPath)
 	dirEntries, err := os.ReadDir(currentPath)
 	if err != nil {
-		log.Printf("Ошибка чтения директории %s: %v", currentPath, err)
+		fmt.Printf("Ошибка чтения директории %s: %v", currentPath, err)
 		return ReportObj{}
 	}
 
@@ -308,7 +246,7 @@ func recursiveWalkthrough(currentPath string, settings InnerSettings) ReportObj 
 		sort.Strings(dirEntriesFileNames)
 		// алг - если есть файл "плейлист" (list.xml),
 		if hasStringInList(listFileName, dirEntriesFileNames) {
-			//log.Println("Есть файл-список заданий")
+			//fmt.Println("Есть файл-список заданий")
 			return ReportObj{
 				itemName:  currentPathShort,
 				level:     0,
@@ -320,7 +258,7 @@ func recursiveWalkthrough(currentPath string, settings InnerSettings) ReportObj 
 			if strings.Contains(filepath.Base(fileName), "ready") {
 				// алг - если есть файл "плейлист фасадов" выполненный (ready_fasady.xml),
 				if strings.Contains(filepath.Base(fileName), "fasady") {
-					log.Printf("Путь: %s. Переместите файл ready_fasady.xml в папки с фасадами\n", currentPath)
+					fmt.Printf("Путь: %s. Переместите файл ready_fasady.xml в папки с фасадами\n", currentPath)
 					return ReportObj{
 						itemName:  currentPathShort,
 						level:     0,
@@ -346,7 +284,7 @@ func recursiveWalkthrough(currentPath string, settings InnerSettings) ReportObj 
 							innerItems: innerObjects,
 						}
 					} else {
-						log.Printf("Ошибка извлечения даты из имени файла %s\n", fileName)
+						fmt.Printf("Ошибка извлечения даты из имени файла %s\n", fileName)
 						return ReportObj{
 							itemName:   currentPathShort,
 							level:      0,
@@ -365,7 +303,7 @@ func recursiveWalkthrough(currentPath string, settings InnerSettings) ReportObj 
 						status:    c_ST_READY,
 					}
 				} else {
-					log.Printf("Ошибка извлечения даты из имени файла %s\n", fileName)
+					fmt.Printf("Ошибка извлечения даты из имени файла %s\n", fileName)
 					return ReportObj{
 						itemName:  currentPathShort,
 						level:     0,
@@ -417,7 +355,7 @@ func recursiveWalkthrough(currentPath string, settings InnerSettings) ReportObj 
 				lev = child.level
 			}
 			if st == c_ST_OTHER {
-				log.Printf("Требуется участие пользователя: статус %s у папки %s\n", st, dirName)
+				fmt.Printf("Требуется участие пользователя: статус %s у папки %s\n", st, dirName)
 				return ReportObj{
 					itemName:  currentPathShort,
 					level:     lev + 1,
@@ -468,31 +406,33 @@ func recursiveWalkthrough(currentPath string, settings InnerSettings) ReportObj 
  * @return - Пересортированный список
  */
 func sortFullnames(unorderedFilelist []string) []string {
-	/*
-		strings.FieldsFunc()
-		strings.Split()
-	*/
 	var tempList, resList []string
 	var tempMap = make(myMap)
 	isSep := func(c rune) bool {
 		return c == '.'
 	}
+	//сохраняем путь к папке с обрабатывемыми файлами
 	dir := filepath.Dir(unorderedFilelist[0])
-	//log.Println(dir)
 	for _, el := range unorderedFilelist {
+		//отбрасываем путь к папке, используем только имена файлов
 		name := filepath.Base(el)
+		//идентификатор в имени файла, например, 12.0.3
 		aydee := getPartFromDividedString(name, c_PRT_ID)
 		nmbr := "1"
 		nmbrStrings := strings.FieldsFunc(aydee, isSep)
 		for _, elem := range nmbrStrings {
+			// превращает, например, 12.0.3 в 012000003
 			if n, err := strconv.Atoi(elem); err == nil {
 				thsnd := strconv.Itoa(n + 1000)
 				nmbr = nmbr + thsnd[1:]
 			}
 		}
-		tempMap[nmbr] = name
+		//делает список с получившимися идентификаторами
 		tempList = append(tempList, nmbr)
+		//и карту с парой "новый идентификатор":"короткое имя файла"
+		tempMap[nmbr] = name
 	}
+	//сортирует список получившихся идентификаторов
 	sort.Strings(tempList)
 	for _, name := range tempList {
 		resList = append(resList, filepath.Join(dir, tempMap[name]))
@@ -509,81 +449,7 @@ func getReadyDate(shortFileName string) string {
 	}
 }
 
-func getReportObjectsFromFile(fullFileName string) []ReportObj {
-	myFileBytes, err := os.ReadFile(fullFileName)
-	if err != nil {
-		log.Printf("Не удалось прочитать файл отчёта %s: %w\n", fullFileName, err)
-		return []ReportObj{{}}
-	}
-	var myRepXML XReportHead
-	err = xml.Unmarshal(myFileBytes, &myRepXML)
-	if err != nil {
-		log.Printf("Не удалось разобрать XML из файла отчёта %s: %w\n", fullFileName, err)
-		return []ReportObj{{}}
-	}
-	return getReportObjects(myRepXML)
-}
-
-func (item *ReportObj) writeReportToFile(fullFilePath string) {
-	var objects []ReportObj
-	objects = append(objects, *item)
-	xmlReport := getReportXML(objects)
-	myHeader := `<?xml version="1.0" encoding="utf-8" ?>` + "\n"
-	xmlReportString := ""
-	xmlReportBytes, errMarshal := xml.MarshalIndent(xmlReport, "", "	") // Используем табуляцию для отступов
-	if errMarshal != nil {
-		log.Printf("Ошибка при сериализации XML: %v", errMarshal)
-		return
-	}
-
-	xmlReportString = myHeader + string(xmlReportBytes)
-	createFile(fullFilePath, []byte(xmlReportString))
-}
-
-func getReportXML(itemObj []ReportObj) XReportHead {
-	var result = XReportHead{}
-	for _, entry := range itemObj {
-		result.ReportItemList.ReportItem = append(result.ReportItemList.ReportItem, entry.convertReportItemToXML())
-	}
-
-	return result
-}
-
-func (item *ReportObj) convertReportItemToXML() XReportItem {
-	var result = XReportItem{
-		ItemName:  item.itemName,
-		Level:     item.level,
-		DateReady: item.dateReady,
-		Status:    item.status,
-	}
-	for _, entry := range item.innerItems {
-		result.ReportItemList.ReportItem = append(result.ReportItemList.ReportItem, entry.convertReportItemToXML())
-	}
-	return result
-}
-
-func getReportObjects(itemX XReportHead) []ReportObj {
-	var result = []ReportObj{}
-	for _, entry := range itemX.ReportItemList.ReportItem {
-		result = append(result, entry.convertReportItemToObj())
-	}
-	return result
-}
-
-func (item *XReportItem) convertReportItemToObj() ReportObj {
-	var result = ReportObj{
-		itemName:  item.ItemName,
-		level:     item.Level,
-		dateReady: item.DateReady,
-		status:    item.Status,
-	}
-	for _, entry := range item.ReportItemList.ReportItem {
-		result.innerItems = append(result.innerItems, entry.convertReportItemToObj())
-	}
-	return result
-}
-
-// --- Функции работы с настройками (из первой программы) ---
+// --- Функции работы с настройками ---
 
 /**
  * initSettings: Читает настройки из указанного файла.
@@ -596,7 +462,7 @@ func initSettings(pathToFileWithSettings string) (InnerSettings, error) {
 	// Определяем абсолютный путь к файлу настроек относительно папки программы
 	progDir := filepath.Dir(os.Args[0])
 	absolutePath := getAbsoluteFilepath(progDir, pathToFileWithSettings)
-	log.Printf("Попытка чтения файла настроек: %s", absolutePath)
+	fmt.Printf("Попытка чтения файла настроек: %s\n", absolutePath)
 	err := settingsStruct.readFromFile(absolutePath)
 	return settingsStruct, err
 }
@@ -635,11 +501,11 @@ func (settings *InnerSettings) readFromFile(fileAbsolutePath string) error {
 	}
 
 	// Логируем прочитанные настройки
-	log.Println("Настройки прочитаны из файла:")
-	log.Printf("  SourceDir (из файла): %s", settings.dirSource)
-	log.Printf("  TargetDir: %s", settings.dirTarget)
-	log.Printf("  WorkReportFile: %s", settings.fileReport)
-	log.Printf("  IgnoreDirList: %v", settings.ignoreList)
+	fmt.Println("Настройки прочитаны из файла:")
+	fmt.Printf("  SourceDir (из файла): %s\n", settings.dirSource)
+	fmt.Printf("  TargetDir: %s\n", settings.dirTarget)
+	fmt.Printf("  WorkReportFile: %s\n", settings.fileReport)
+	//fmt.Printf("  IgnoreDirList: %v\n", settings.ignoreList)
 
 	return nil
 }
@@ -667,25 +533,6 @@ func (settings *InnerSettings) isIgnored(dirPath string) bool {
 	} else {
 		return false
 	}
-}
-
-func isValidDir(dirPath string) bool {
-	// Проверяем, что это действительно папка
-	fileInfo, err := os.Stat(dirPath)
-	if err != nil {
-		// Если ошибка связана с тем, что файл/папка не найден, это не ошибка для этой функции
-		if os.IsNotExist(err) {
-			log.Printf("Папка %s не существует: %v", dirPath, err)
-			return false // Не существующий путь не может быть пригодным для использования
-		}
-		log.Printf("Не удалось получить информацию о %s: %v", dirPath, err) // Другая ошибка Stat
-		return false
-	}
-	if !fileInfo.IsDir() {
-		// Это не папка
-		return false
-	}
-	return true
 }
 
 /**
@@ -730,7 +577,7 @@ func writeDefaultSettingsToFile(fileAbsolutePath string) error {
 	return err
 }
 
-// --- Функции обработки файлов и XML (из второй программы) ---
+// --- Функции обработки файлов и XML ---
 
 /**
  * updateFileWithXML: Читает XML-файл, обновляет поле Name у панелей и перезаписывает файл.
@@ -742,10 +589,10 @@ func updateFileWithXML(filePath string) {
 		return
 	}
 
-	//log.Printf("Обновление XML-файла: %s", filePath)
+	//fmt.Printf("Обновление XML-файла: %s", filePath)
 	myFileBytes, errRead := os.ReadFile(filePath)
 	if errRead != nil {
-		log.Printf("Ошибка чтения XML-файла %s для обновления: %v", filePath, errRead)
+		fmt.Printf("Ошибка чтения XML-файла %s для обновления: %v", filePath, errRead)
 		return
 	}
 
@@ -774,7 +621,7 @@ func getUpdatedXML(inXMLBytes []byte) (string, bool, error) {
 
 	err := xml.Unmarshal(inXMLBytes, &root)
 	if err != nil {
-		log.Printf("Ошибка при разборе XML для обновления: %v", err)
+		fmt.Printf("Ошибка при разборе XML для обновления: %v", err)
 		return "", false, err // Возвращаем ошибку
 	}
 
@@ -787,7 +634,7 @@ func getUpdatedXML(inXMLBytes []byte) (string, bool, error) {
 		thickness64, errT := strconv.ParseFloat(strings.Replace(panel.Thickness, ",", ".", 1), 64)
 
 		if errW != nil || errL != nil || errT != nil {
-			log.Printf("Предупреждение: Не удалось преобразовать Длину ('%s'), Ширину ('%s') или Толщину ('%s') в число для панели ID='%s'. Имя не будет обновлено.", panel.Length, panel.Width, panel.Thickness, panel.ID)
+			fmt.Printf("Предупреждение: Не удалось преобразовать Длину ('%s'), Ширину ('%s') или Толщину ('%s') в число для панели ID='%s'. Имя не будет обновлено.", panel.Length, panel.Width, panel.Thickness, panel.ID)
 			continue // Пропускаем эту панель, если размеры некорректны
 		}
 
@@ -800,7 +647,7 @@ func getUpdatedXML(inXMLBytes []byte) (string, bool, error) {
 	}
 
 	if !updated {
-		//log.Println("Обновление XML не требуется, имена панелей уже соответствуют формату Длина_Ширина_Толщина.")
+		//fmt.Println("Обновление XML не требуется, имена панелей уже соответствуют формату Длина_Ширина_Толщина.")
 		// Возвращаем пустую строку, чтобы избежать лишней сериализации
 		return "", false, nil
 	}
@@ -808,7 +655,7 @@ func getUpdatedXML(inXMLBytes []byte) (string, bool, error) {
 	// Сериализуем обновленную структуру обратно в XML
 	updatedXMLBytes, errMarshal := xml.MarshalIndent(root, "", "	") // Используем табуляцию для отступов
 	if errMarshal != nil {
-		log.Printf("Ошибка при сериализации обновленного XML: %v", errMarshal)
+		fmt.Printf("Ошибка при сериализации обновленного XML: %v", errMarshal)
 		return "", false, errMarshal // Возвращаем ошибку
 	}
 
@@ -888,77 +735,13 @@ func getXMLProcessList(myPathList []string) string {
 			sb.WriteString("			<Count>0</Count>\n") // Поле Count по умолчанию 0
 			sb.WriteString("		</Item>\n")
 		} else {
-			log.Printf("Предупреждение: Не удалось извлечь количество деталей из имени файла '%s'. Запись в ProcessList не добавлена.", elemPath)
+			fmt.Printf("Предупреждение: Не удалось извлечь количество деталей из имени файла '%s'. Запись в ProcessList не добавлена.", elemPath)
 		}
-	}
-	return sb.String()
-}
-
-func createReport(reports []ReportObj) string {
-	var reportStrings []string
-	for _, rep := range reports {
-		dateMonth := ""
-		if rep.dateReady != "" {
-			dateMonth = rep.dateReady[0:7]
-		}
-		reportStrings = append(reportStrings, dateMonth+" - "+rep.itemName+"\n")
-	}
-	sort.Strings(reportStrings)
-	var sb strings.Builder
-	for _, rs := range reportStrings {
-		sb.WriteString(rs)
 	}
 	return sb.String()
 }
 
 // --- Вспомогательные функции
-
-/**
- * checkFatal: Проверяет ошибку и завершает программу с фатальной ошибкой, если она есть.
- * @param e - Проверяемая ошибка.
- * @param message - Сообщение для вывода перед завершением.
- */
-func checkFatal(e error, message string) {
-	if e != nil {
-		log.Fatalf("%s: %v", message, e)
-	}
-}
-
-func createFile(fullFilePath string, data []byte) error {
-	errWrite := os.WriteFile(fullFilePath, data, 0644)
-	if errWrite != nil {
-		log.Printf("Ошибка записи файла %s: %v", fullFilePath, errWrite)
-	}
-	return errWrite
-}
-
-/**
- * getAbsoluteFilepath: Преобразует относительный путь в абсолютный, используя указанную родительскую директорию.
- * Если путь уже абсолютный, возвращает его без изменений.
- * @param parent - Родительская директория (абсолютный путь).
- * @param s - Путь для преобразования (может быть относительным или абсолютным).
- * @return string - Абсолютный путь.
- */
-func getAbsoluteFilepath(parent string, s string) string {
-	if filepath.IsAbs(s) {
-		return filepath.Clean(s) // Возвращаем очищенный абсолютный путь
-	}
-	// Объединяем родительский путь и относительный путь, затем очищаем
-	return filepath.Clean(filepath.Join(parent, s))
-}
-
-/**
- * getExtention: Возвращает расширение файла в нижнем регистре без точки.
- * @param name - Имя файла.
- * @return string - Расширение файла или пустая строка, если расширения нет.
- */
-func getExtention(name string) string {
-	ext := filepath.Ext(name)
-	if len(ext) > 1 {
-		return strings.ToLower(ext[1:]) // Убираем точку и приводим к нижнему регистру
-	}
-	return "" // Пустая строка, если нет расширения
-}
 
 /** Возвращает код типа файла на основе его расширения
  * getFiletypeCode: Ищет значение в карте myMap и возвращает соответствующий ключ.
@@ -987,25 +770,6 @@ func hasStopWord(examinedStr string) bool {
 		}
 	}
 	return false
-}
-
-// Проверяет наличие строки в массиве строк
-func hasStringInList(searchFor string, stringList []string) bool {
-	// Приводим массив к нижнему регистру для сравнения без учета регистра
-	stringListLower := make([]string, len(stringList))
-	for i, en := range stringList {
-		stringListLower[i] = strings.ToLower(en)
-	}
-	// Приводим искомую строку к нижнему регистру
-	searchForLower := strings.ToLower(searchFor)
-
-	sort.Strings(stringListLower)
-	pos := sort.SearchStrings(stringListLower, searchForLower)
-	if pos >= len(stringListLower) {
-		return false
-	}
-	res := searchForLower == stringListLower[pos]
-	return res
 }
 
 /**
@@ -1064,93 +828,3 @@ func checkDetailsAmount(inString string) string {
 	// Если все проверки пройдены, возвращаем извлеченное количество
 	return inString
 }
-
-/*
-Общий алгоритм
-
-первый запуск recursiveWalkthrough (далее "RWt()") не оставляет следов в осматриваемой папке,
-	но во всех вложенных папках может оставить файл с меткой о выполнении заказа (метка - файл с названием order_ready_yyyymmdd.xml)
-вместо этого первый запуск RWt() должен все выполненные заказы перемещать в целевую папку
-
-в каждой папке, в которую RWt() зашла во время обхода, возможны взаимно исключающие исходы:
-- создала метку о выполнении заказа // во всех подпапках есть файлы с подстрокой "ready" в названии
-- создала файл list.xml и обработала (попыталась) XML-файлы // в этой папке (нет list.xml) И (есть подходящие файлы)
-- ничего не произошло
-
-Соответственно, // <- переработать
-первым делом нужно всё содержимое осматриваемой папки разделить на 2 перечня - [подпапки, файлы],
-далее, обработать перечень файлов:
-	- если есть файл "плейлист" (list.xml),
-		сформировать отчёт с записью о том, что папка в работе (статус ОЖИДАЕТ)
-		ЗАВЕРШИТЬ выполнение функции, вернуть отчёт
-	- если есть файл "плейлист фасадов" выполненный (ready_fasady.xml),
-		вывести сообщение "Путь: заказчик/заказ. Скопируйте файл ready_fasady.xml в папки с фасадами",
-		сформировать отчёт с записью о том, что папка в работе (статус ОЖИДАЕТ)
-		ЗАВЕРШИТЬ выполнение функции, вернуть отчёт
-	- если есть файл-метка-отчёт order_ready_yyyymmdd.xml,
-		прочитать отчёт,
-		ЗАВЕРШИТЬ выполнение функции, вернуть отчёт
-	- если есть выполненный файл "плейлист" (ready_yyyymmdd.xml),
-		сформировать отчёт с записью о том, что папка в работе (статус ГОТОВ)
-		ЗАВЕРШИТЬ выполнение функции, вернуть отчёт
-	- если есть подходящие для обработки файлы-задания,
-		обработать их,
-		сформировать отчёт с записью о том, что папка в работе (статус ОЖИДАЕТ)
-		ЗАВЕРШИТЬ выполнение функции, вернуть отчёт
-	- иначе - переход к следующему этапу 🡗
-после этого запустить во всех подпапках RWt()
-	- если подпапок нет,
-		сформировать отчёт с записью о том, что требуется внимание пользователя (статус ИНОЕ)
-		ЗАВЕРШИТЬ выполнение функции, вернуть отчёт
-	- если хоть у одной папки вернулся статус ИНОЕ,
-		сформировать отчёт с записью о том, что требуется внимание пользователя (статус ИНОЕ)
-		ЗАВЕРШИТЬ выполнение функции, вернуть отчёт
-	- если во всех случаях вернулся статус ГОТОВ,
-		сформировать отчёт с записью о том, что папка обработана (статус ГОТОВ)
-		записать отчёт в файл (оставить метку),
-		ЗАВЕРШИТЬ выполнение функции, вернуть отчёт
-	- иначе (есть ОЖИДАЕТ и нет ИНОЕ)
-		сформировать отчёт с записью о том, что папка в работе (статус ОЖИДАЕТ)
-		ЗАВЕРШИТЬ выполнение функции, вернуть отчёт
-
-кейсы по приоритетам и исходам:
-	1) папка содержит list.xml
-		=> вернуть отчёт с записью о том, что папка в работе (статус ОЖИДАЕТ)
-	2) в папке есть файл ready_fasady.xml
-		=> вывести сообщение "Путь: заказчик/заказ. Скопируйте файл ready_fasady.xml в папки с фасадами"
-		=> вернуть отчёт с записью о том, что папка в работе (статус ОЖИДАЕТ)
-	3) папка содержит метку готовности ИЛИ ready.xml
-		=> сформировать и вернуть отчёт (статус ГОТОВ)
-	4) папка содержит файлы с заданиями (xml или mpr)
-		=> сформировать list.xml
-		=> обработать файлы
-		=> вернуть отчёт с записью о том, что папка в работе (статус ОЖИДАЕТ)
-	5) во всех подпапках есть метка готовности,
-		=> создать метку готовности
-		=> сформировать и вернуть отчёт (статус ГОТОВ)
-	6) НЕ во всех подпапках есть метка готовности,
-		=> сформировать и вернуть отчёт (статус ОЖИДАЕТ или ИНОЕ, если есть ИНОЕ)
-	7) ИНОЕ
-		=> вернуть пустой отчёт (статус ИНОЕ)
-
-Шаблон отчёта //
-// массив объектов, в объекте массив проектов, в проекте массив раскроев
-// на каждом уровне статус и дата выполнения
-// статусы: ожидает / готов / иное
-	[{
-		"order_name" : string,
-		"status" : string,
-		"date_ready" : date,
-		"projects" : [{
-			"project_name" : string,
-			"status" : string,
-			"date_ready" : date,
-			"cuts" : [{
-				"material_name" : string,
-				"status" : string,
-				"date_ready" : date,
-			}, ... ]
-		}, ... ]
-	}, ... ]
-
-*/

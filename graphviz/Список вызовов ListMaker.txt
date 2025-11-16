@@ -1,0 +1,58 @@
+Список вызовов ListMaker
+-----
+
+main : initSettings, checkFatal, writeDefaultSettingsToFile, getAbsoluteFilepath, processSourceDirectory
+
+getExtention : 
+createFile : 
+hasStringInList : 
+isValidDir : 
+getAbsoluteFilepath : 
+checkFatal : 
+
+---
+
+isIgnored : isValidDir, hasStringInList
+initSettings : getAbsoluteFilepath, readFromFile
+readFromFile : getAbsoluteFilepath
+writeDefaultSettingsToFile : createFile
+
+---
+
+createReport : 
+getReportObjectsFromFile : getReportObjects
+writeReportToFile : getReportXML, createFile
+getReportXML : convertReportItemToXML
+convertReportItemToXML : convertReportItemToXML
+getReportObjects : convertReportItemToObj
+convertReportItemToObj : convertReportItemToObj
+
+---
+
+processSourceDirectory : recursiveWalkthrough, createFile, createReport, isValidDir
+
+recursiveWalkthrough : hasStringInList, getReadyDate, getReportObjectsFromFile, hasStopWord, updateFileWithXML, getOutputXML, sortFullnames, createFile, recursiveWalkthrough, writeReportToFile, isIgnored
+
+sortFullnames : getPartFromDividedString
+
+getReadyDate : getPartFromDividedString
+
+updateFileWithXML : getUpdatedXML, createFile
+
+getUpdatedXML : 
+
+getOutputXML : getXMLFileList, getXMLProcessList
+
+getXMLFileList : getFiletypeCode, getExtention
+
+getXMLProcessList : countDetails
+
+getFiletypeCode : 
+
+hasStopWord : 
+
+countDetails : checkDetailsAmount, getPartFromDividedString
+
+getPartFromDividedString : 
+
+checkDetailsAmount : 
