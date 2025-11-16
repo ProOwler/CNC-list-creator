@@ -329,7 +329,7 @@ func recursiveWalkthrough(currentPath string, settings InnerSettings) ReportObj 
 		}
 		// создать плейлист
 		if len(fullnamesToProceed) > 0 {
-			outputXMLString := getOutputXML(sortFullnames(fullnamesToProceed), listOfFileFormats)
+			outputXMLString := getOutputXML(fullnamesToProceed, listOfFileFormats)
 			outputFilePath := filepath.Join(currentPath, listFileName)
 			createFile(outputFilePath, []byte(outputXMLString))
 			//	сформировать отчёт с записью о том, что папка в работе (статус ОЖИДАЕТ)
@@ -396,48 +396,6 @@ func recursiveWalkthrough(currentPath string, settings InnerSettings) ReportObj 
 		dateReady: "",
 		status:    c_ST_OTHER,
 	}
-}
-
-/**
- * sortFullnames: Сортирует имена файлов помодульно:
- *  разбивает имя файла на части по "_", для дальнейшей сортировки использует только первую часть
- *  получившееся разбивает по ".", у каждого получившегося куска использует только численное значение, нули ("0") в старших разрядах не учитываются
- * @param unorderedFilelist - Список имён файлов, подлежащий сортировке
- * @return - Пересортированный список
- */
-func sortFullnames(unorderedFilelist []string) []string {
-	var tempList, resList []string
-	var tempMap = make(myMap)
-	isSep := func(c rune) bool {
-		return c == '.'
-	}
-	//сохраняем путь к папке с обрабатывемыми файлами
-	dir := filepath.Dir(unorderedFilelist[0])
-	for _, el := range unorderedFilelist {
-		//отбрасываем путь к папке, используем только имена файлов
-		name := filepath.Base(el)
-		//идентификатор в имени файла, например, 12.0.3
-		aydee := getPartFromDividedString(name, c_PRT_ID)
-		nmbr := "1"
-		nmbrStrings := strings.FieldsFunc(aydee, isSep)
-		for _, elem := range nmbrStrings {
-			// превращает, например, 12.0.3 в 012000003
-			if n, err := strconv.Atoi(elem); err == nil {
-				thsnd := strconv.Itoa(n + 1000)
-				nmbr = nmbr + thsnd[1:]
-			}
-		}
-		//делает список с получившимися идентификаторами
-		tempList = append(tempList, nmbr)
-		//и карту с парой "новый идентификатор":"короткое имя файла"
-		tempMap[nmbr] = name
-	}
-	//сортирует список получившихся идентификаторов
-	sort.Strings(tempList)
-	for _, name := range tempList {
-		resList = append(resList, filepath.Join(dir, tempMap[name]))
-	}
-	return resList
 }
 
 func getReadyDate(shortFileName string) string {
@@ -694,10 +652,9 @@ func getXMLFileList(myPathList []string, extCodes myMap) string {
  */
 func getXMLProcessList(myPathList []string) string {
 	var sb strings.Builder
-	for _, elemPath := range myPathList {
-		detailCodeWithExt := filepath.Base(elemPath)                                         // Получаем имя файла с расширением
-		detailCode := strings.TrimSuffix(detailCodeWithExt, filepath.Ext(detailCodeWithExt)) // Убираем расширение
-		detailCount := countDetails(detailCode)                                              // Извлекаем количество из имени файла
+	for _, elemPath := range sortFilenames(myPathList) {
+		detailCode := strings.TrimSuffix(elemPath, filepath.Ext(elemPath)) // Убираем расширение
+		detailCount := countDetails(detailCode)                            // Извлекаем количество из имени файла
 
 		if detailCount != "" { // Добавляем только если удалось извлечь количество
 			sb.WriteString("		<Item>\n")
@@ -717,6 +674,47 @@ func getXMLProcessList(myPathList []string) string {
 }
 
 // --- Вспомогательные функции
+
+/**
+ * sortFilenames: Сортирует имена файлов помодульно:
+ *  разбивает имя файла на части по "_", для дальнейшей сортировки использует только первую часть
+ *  получившееся разбивает по ".", у каждого получившегося куска использует только численное значение, нули ("0") в старших разрядах не учитываются
+ * @param unorderedFilelist - Список ПОЛНЫХ имён файлов, подлежащий сортировке
+ * @return - Пересортированный список, БЕЗ полного пути
+ */
+func sortFilenames(unorderedFilelist []string) []string {
+	var tempList, resList []string
+	var tempMap = make(myMap)
+	isSep := func(c rune) bool {
+		return c == '.'
+	}
+	//сохраняем путь к папке с обрабатывемыми файлами
+	for _, el := range unorderedFilelist {
+		//отбрасываем путь к папке, используем только имена файлов
+		name := filepath.Base(el)
+		//идентификатор в имени файла, например, 12.0.3
+		aydee := getPartFromDividedString(name, c_PRT_ID)
+		nmbr := "1"
+		nmbrStrings := strings.FieldsFunc(aydee, isSep)
+		for _, elem := range nmbrStrings {
+			// превращает, например, 12.0.3 в 012000003
+			if n, err := strconv.Atoi(elem); err == nil {
+				thsnd := strconv.Itoa(n + 1000)
+				nmbr = nmbr + thsnd[1:]
+			}
+		}
+		//делает список с получившимися идентификаторами
+		tempList = append(tempList, nmbr)
+		//и карту с парой "новый идентификатор":"короткое имя файла"
+		tempMap[nmbr] = name
+	}
+	//сортирует список получившихся идентификаторов
+	sort.Strings(tempList)
+	for _, name := range tempList {
+		resList = append(resList, tempMap[name])
+	}
+	return resList
+}
 
 /** Возвращает код типа файла на основе его расширения
  * getFiletypeCode: Ищет значение в карте myMap и возвращает соответствующий ключ.
