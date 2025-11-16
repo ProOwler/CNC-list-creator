@@ -41,8 +41,8 @@ type InnerSettings struct {
 	fileReport string   // Файл отчета
 }
 
-// XResult: Структура для разбора XML-файлов деталей (из второй программы)
-type XResult struct {
+// XTaskXML: Структура для разбора XML-файлов деталей
+type XTaskXML struct {
 	XMLName xml.Name `xml:"Root"`
 	Project XProject `xml:"Project"`
 }
@@ -584,49 +584,42 @@ func writeDefaultSettingsToFile(fileAbsolutePath string) error {
  * @param filePath - Путь к XML-файлу для обновления.
  */
 func updateFileWithXML(filePath string) {
-	// Дополнительная проверка, что это XML (хотя вызывается только для XML)
-	if strings.ToLower(getExtention(filePath)) != "xml" {
-		return
-	}
-
-	//fmt.Printf("Обновление XML-файла: %s", filePath)
 	myFileBytes, errRead := os.ReadFile(filePath)
 	if errRead != nil {
 		fmt.Printf("Ошибка чтения XML-файла %s для обновления: %v", filePath, errRead)
 		return
 	}
 
-	// Получаем обновленное содержимое XML
-	myEditedXML, xmlUpdated, errUpdate := getUpdatedXML(myFileBytes)
-	if errUpdate != nil {
-		// Ошибка уже залогирована внутри getUpdatedXML
+	var taskXML XTaskXML
+	err := xml.Unmarshal(myFileBytes, &taskXML)
+	if err != nil {
+		fmt.Printf("Ошибка при разборе XML для обновления: %v", err)
 		return
 	}
+	editedTaskXML, isXmlUpdated := postprocessXML(taskXML)
 
-	// Перезаписываем файл с обновленным содержимым
-	if xmlUpdated {
-		createFile(filePath, []byte(myEditedXML))
+	if isXmlUpdated {
+		// Сериализуем обновленную структуру обратно в XML
+		editedTaskXMLBytes, errMarshal := xml.MarshalIndent(editedTaskXML, "", "	") // Используем табуляцию для отступов
+		if errMarshal != nil {
+			fmt.Printf("Ошибка при сериализации обновленного XML: %v", errMarshal)
+			return
+		}
+		// Перезаписываем файл с обновленным содержимым
+		myHeader := `<?xml version="1.0" encoding="utf-8" ?>` + "\n"
+		createFile(filePath, []byte(myHeader+string(editedTaskXMLBytes)))
 	}
+	return
 }
 
 /**
- * getUpdatedXML: Разбирает XML байты, обновляет поле Name у панелей и возвращает обновленный XML в виде строки.
- * @param inXMLBytes - Содержимое XML-файла в виде байтов.
- * @return string - Обновленное XML-содержимое в виде строки (с заголовком).
- * @return bool - true, если строка обновлена.
- * @return error - Ошибка при разборе или сериализации XML.
+ * postprocessXML: Разбирает XML байты, обновляет поле Name у панелей и возвращает обновленные XML-байты.
+ * @param root - Содержимое XML-файла в виде байтов.
+ * @return XTaskXML - Обновленное XML-содержимое в виде массива байт.
+ * @return bool - true, если данные обновлены.
  */
-func getUpdatedXML(inXMLBytes []byte) (string, bool, error) {
-	var root XResult
-
-	err := xml.Unmarshal(inXMLBytes, &root)
-	if err != nil {
-		fmt.Printf("Ошибка при разборе XML для обновления: %v", err)
-		return "", false, err // Возвращаем ошибку
-	}
-
-	// Обновляем поле Name для каждой панели
-	updated := false // Флаг, что хотя бы одно имя было обновлено
+func postprocessXML(root XTaskXML) (updatedXML XTaskXML, isUpdated bool) {
+	isUpdated = false // Флаг, что хотя бы одно имя было обновлено
 	for i := range root.Project.Panels.Panel {
 		panel := &root.Project.Panels.Panel[i]
 		width64, errW := strconv.ParseFloat(strings.Replace(panel.Width, ",", ".", 1), 64)
@@ -635,34 +628,16 @@ func getUpdatedXML(inXMLBytes []byte) (string, bool, error) {
 
 		if errW != nil || errL != nil || errT != nil {
 			fmt.Printf("Предупреждение: Не удалось преобразовать Длину ('%s'), Ширину ('%s') или Толщину ('%s') в число для панели ID='%s'. Имя не будет обновлено.", panel.Length, panel.Width, panel.Thickness, panel.ID)
-			continue // Пропускаем эту панель, если размеры некорректны
+		} else {
+			// Используем .0f, чтоб не было знаков после запятой
+			newName := fmt.Sprintf("%.0f_%.0f_%.0f", length64, width64, thickness64)
+			if panel.Name != newName {
+				panel.Name = newName
+				isUpdated = true
+			}
 		}
-
-		// Используем .0f, чтоб не было знаков после запятой
-		newName := fmt.Sprintf("%.0f_%.0f_%.0f", length64, width64, thickness64)
-		if panel.Name != newName {
-			panel.Name = newName
-			updated = true
-		}
 	}
-
-	if !updated {
-		//fmt.Println("Обновление XML не требуется, имена панелей уже соответствуют формату Длина_Ширина_Толщина.")
-		// Возвращаем пустую строку, чтобы избежать лишней сериализации
-		return "", false, nil
-	}
-
-	// Сериализуем обновленную структуру обратно в XML
-	updatedXMLBytes, errMarshal := xml.MarshalIndent(root, "", "	") // Используем табуляцию для отступов
-	if errMarshal != nil {
-		fmt.Printf("Ошибка при сериализации обновленного XML: %v", errMarshal)
-		return "", false, errMarshal // Возвращаем ошибку
-	}
-
-	myHeader := `<?xml version="1.0" encoding="utf-8" ?>` + "\n"
-	updatedXML := ""
-	updatedXML = myHeader + string(updatedXMLBytes)
-	return updatedXML, true, nil
+	return root, isUpdated
 }
 
 /**
